@@ -995,3 +995,83 @@ drgn_program_member_info(struct drgn_program *prog, struct drgn_type *type,
 	ret->bit_field_size = member->bit_field_size;
 	return NULL;
 }
+
+struct drgn_string_symbol {
+	const char *name;
+	struct drgn_symbol *symbol;
+	struct drgn_error *err;
+};
+
+static int drgn_dwarf_module_iterate_sym_table(
+	Dwfl_Module *dwfl_module,
+	void **userdatap,
+	const char *module_name,
+	Dwarf_Addr base, void *arg)
+{
+	GElf_Sym elf_sym;
+	GElf_Addr elf_addr;
+	struct drgn_string_symbol *sym;
+	int symtab_offset, symtab_len;
+
+	sym = arg;
+	sym->err = NULL;
+
+	symtab_len = dwfl_module_getsymtab(dwfl_module);
+	symtab_offset = dwfl_module_getsymtab_first_global(dwfl_module);
+
+	if (symtab_len == -1 || symtab_offset == -1) {
+		sym->err = drgn_error_format(DRGN_ERROR_LOOKUP,
+			"could not look up symbol table for %s.", module_name);
+		return DWARF_CB_ABORT;
+	}
+
+	for (int i = symtab_offset; i < symtab_len; i++) {
+		const char *name = dwfl_module_getsym_info(
+			dwfl_module, i, &elf_sym, &elf_addr, NULL, NULL, NULL);
+
+		if (strcmp(sym->name, name) == 0) {
+			sym->symbol->name = name;
+			sym->symbol->address = elf_addr;
+			sym->symbol->size = elf_sym.st_size;
+			return DWARF_CB_ABORT;
+		}
+	}
+	return DWARF_CB_OK;
+}
+
+
+LIBDRGN_PUBLIC struct drgn_error *
+drgn_program_find_symbol_by_name(struct drgn_program *prog,
+			const char *name, struct drgn_symbol **ret)
+{
+	struct drgn_string_symbol arg;
+	struct drgn_error *err = NULL;
+	Dwfl *dwfl;
+
+	struct drgn_symbol *sym;
+
+	err = drgn_program_get_dwfl(prog, &dwfl);
+	if (err)
+		return err;
+
+	sym = malloc(sizeof(*sym));
+	arg.name = name;
+	arg.symbol = sym;
+
+	if (dwfl_getmodules(dwfl, drgn_dwarf_module_iterate_sym_table, &arg, 0)) {
+		err = arg.err;
+		if (!err) {
+			*ret = arg.symbol;
+			return NULL;
+		}
+	}
+
+	if (!err) {
+		// If we did a full iteration with no errors, we didn't find anything.
+		err = drgn_error_format(DRGN_ERROR_LOOKUP,
+			"could not find symbol containing '%s'", name);
+	}
+
+	free(sym);
+	return err;
+}

@@ -208,6 +208,15 @@ struct index_arg {
 };
 int index_converter(PyObject *o, void *p);
 
+// Argument converter for union of string and int types.
+struct string_int_arg {
+	bool is_string;
+	struct index_arg index_arg;
+	const char *strvalue;
+	Py_ssize_t strlen;
+};
+int string_int_converter(PyObject *o, void *p);
+
 /* Helpers for path arguments based on posixmodule.c in CPython. */
 struct path_arg {
 	bool allow_none;

@@ -718,19 +718,24 @@ static StackTrace *Program_stack_trace(Program *self, PyObject *args,
 	return ret;
 }
 
-static PyObject *Program_symbol(Program *self, PyObject *args, PyObject *kwds)
+static PyObject *Program_symbol(Program *self, PyObject *address_or_name)
 {
 	static char *keywords[] = {"address", NULL};
 	struct drgn_error *err;
-	struct index_arg address = {};
+	struct string_int_arg address = {};
 	struct drgn_symbol *sym;
 	PyObject *ret;
 
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O&", keywords,
-					 index_converter, &address))
+
+	if (!string_int_converter(address_or_name, &address))
 		return NULL;
 
-	err = drgn_program_find_symbol_by_address(&self->prog, address.uvalue, &sym);
+	if (address.is_string) {
+		err = drgn_program_find_symbol_by_name(&self->prog, address.strvalue, &sym);
+	} else {
+		err = drgn_program_find_symbol_by_address(&self->prog, address.index_arg.uvalue, &sym);
+	}
+
 	if (err)
 		return set_drgn_error(err);
 	ret = Symbol_wrap(sym, self);
@@ -867,7 +872,7 @@ static PyMethodDef Program_methods[] = {
 	 METH_VARARGS | METH_KEYWORDS, drgn_Program_variable_DOC},
 	{"stack_trace", (PyCFunction)Program_stack_trace,
 	 METH_VARARGS | METH_KEYWORDS, drgn_Program_stack_trace_DOC},
-	{"symbol", (PyCFunction)Program_symbol, METH_VARARGS | METH_KEYWORDS,
+	{"symbol", (PyCFunction)Program_symbol, METH_O,
 	 drgn_Program_symbol_DOC},
 	{},
 };

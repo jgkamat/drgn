@@ -103,6 +103,26 @@ int index_converter(PyObject *o, void *p)
 	}
 }
 
+int string_int_converter(PyObject *o, void *p)
+{
+	struct string_int_arg *arg = p;
+
+	arg->index_arg.is_none = o == Py_None;
+	if (arg->index_arg.allow_none && arg->index_arg.is_none)
+		return 1;
+
+	if (PyUnicode_Check(o)) {
+		arg->strvalue = PyUnicode_AsUTF8(o);
+		if (!arg->strvalue)
+			return 0;
+		arg->strlen = strlen(arg->strvalue);
+		arg->is_string = true;
+		return !PyErr_Occurred();
+	} else {
+		return index_converter(o, &arg->index_arg);
+	}
+}
+
 int path_converter(PyObject *o, void *p)
 {
 	struct path_arg *path = p;
