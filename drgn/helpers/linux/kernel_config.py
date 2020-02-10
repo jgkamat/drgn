@@ -28,11 +28,22 @@ def kconfig(prog):
 
     try:
         start = prog.symbol("kernel_config_data").address
-        end = prog.symbol("kernel_config_data_end").address
+        size = prog.symbol("kernel_config_data_end").address - start
+        raw_data = prog.read(start, size)
     except LookupError:
-        raise LookupError("kernel configuration data not found; kernel must be compiled with CONFIG_IKCONFIG")
+        try:
+            # Try reading data in format present before kernel 5.0.
+            start = prog['kernel_config_data'].address_
+            size = len(prog['kernel_config_data'])
+            raw_data = prog.read(start, size)
+            trim_left = raw_data.find(b'IKCFG_ST') + len(b'IKCFG_ST')
+            trim_right = raw_data.rfind(b'IKCFG_ED')
+            if trim_left == -1 or trim_right == -1:
+                raise LookupError("IKCFG not Found")
+            raw_data = raw_data[trim_left:trim_right]
+        except LookupError:
+            raise LookupError("kernel configuration data not found; kernel must be compiled with CONFIG_IKCONFIG")
 
-    raw_data = prog.read(start, end - start)
     raw_options = gzip.decompress(raw_data).decode().split('\n')
 
     result = {}
