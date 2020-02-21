@@ -177,11 +177,12 @@ drgn_parameter_type(struct drgn_type_parameter *parameter,
 }
 
 LIBDRGN_PUBLIC struct drgn_type drgn_void_type = {
-	{ .kind = DRGN_TYPE_VOID, .primitive = DRGN_C_TYPE_VOID, },
+	{ .kind = DRGN_TYPE_VOID, .primitive = DRGN_C_TYPE_VOID,
+	  .lang = &drgn_language_c },
 };
 
 void drgn_int_type_init(struct drgn_type *type, const char *name, uint64_t size,
-			bool is_signed)
+			bool is_signed, const struct drgn_language *lang)
 {
 	enum drgn_primitive_type primitive;
 
@@ -201,10 +202,11 @@ void drgn_int_type_init(struct drgn_type *type, const char *name, uint64_t size,
 	}
 	type->_private.size = size;
 	type->_private.is_signed = is_signed;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_bool_type_init(struct drgn_type *type, const char *name,
-			 uint64_t size)
+			 uint64_t size, const struct drgn_language *lang)
 {
 	assert(name);
 	type->_private.kind = DRGN_TYPE_BOOL;
@@ -218,10 +220,11 @@ void drgn_bool_type_init(struct drgn_type *type, const char *name,
 		type->_private.name = name;
 	}
 	type->_private.size = size;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_float_type_init(struct drgn_type *type, const char *name,
-			  uint64_t size)
+			  uint64_t size, const struct drgn_language *lang)
 {
 	enum drgn_primitive_type primitive;
 
@@ -238,10 +241,12 @@ void drgn_float_type_init(struct drgn_type *type, const char *name,
 		type->_private.name = name;
 	}
 	type->_private.size = size;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_complex_type_init(struct drgn_type *type, const char *name,
-			    uint64_t size, struct drgn_type *real_type)
+			    uint64_t size, struct drgn_type *real_type,
+			    const struct drgn_language *lang)
 {
 	assert(name);
 	assert(real_type);
@@ -254,10 +259,12 @@ void drgn_complex_type_init(struct drgn_type *type, const char *name,
 	type->_private.size = size;
 	type->_private.type = real_type;
 	type->_private.qualifiers = 0;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_struct_type_init(struct drgn_type *type, const char *tag,
-			   uint64_t size, size_t num_members)
+			   uint64_t size, size_t num_members,
+			   const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_STRUCT;
 	type->_private.is_complete = true;
@@ -265,9 +272,11 @@ void drgn_struct_type_init(struct drgn_type *type, const char *tag,
 	type->_private.tag = tag;
 	type->_private.size = size;
 	type->_private.num_members = num_members;
+	type->_private.lang = drgn_language_default(lang);
 }
 
-void drgn_struct_type_init_incomplete(struct drgn_type *type, const char *tag)
+void drgn_struct_type_init_incomplete(struct drgn_type *type, const char *tag,
+				      const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_STRUCT;
 	type->_private.is_complete = false;
@@ -275,10 +284,12 @@ void drgn_struct_type_init_incomplete(struct drgn_type *type, const char *tag)
 	type->_private.tag = tag;
 	type->_private.size = 0;
 	type->_private.num_members = 0;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_union_type_init(struct drgn_type *type, const char *tag,
-			  uint64_t size, size_t num_members)
+			  uint64_t size, size_t num_members,
+			  const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_UNION;
 	type->_private.is_complete = true;
@@ -286,9 +297,11 @@ void drgn_union_type_init(struct drgn_type *type, const char *tag,
 	type->_private.tag = tag;
 	type->_private.size = size;
 	type->_private.num_members = num_members;
+	type->_private.lang = drgn_language_default(lang);
 }
 
-void drgn_union_type_init_incomplete(struct drgn_type *type, const char *tag)
+void drgn_union_type_init_incomplete(struct drgn_type *type, const char *tag,
+				     const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_UNION;
 	type->_private.is_complete = false;
@@ -296,10 +309,12 @@ void drgn_union_type_init_incomplete(struct drgn_type *type, const char *tag)
 	type->_private.tag = tag;
 	type->_private.size = 0;
 	type->_private.num_members = 0;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_class_type_init(struct drgn_type *type, const char *tag,
-			  uint64_t size, size_t num_members)
+			  uint64_t size, size_t num_members,
+			  const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_CLASS;
 	type->_private.is_complete = true;
@@ -307,9 +322,11 @@ void drgn_class_type_init(struct drgn_type *type, const char *tag,
 	type->_private.tag = tag;
 	type->_private.size = size;
 	type->_private.num_members = num_members;
+	type->_private.lang = drgn_language_default(lang);
 }
 
-void drgn_class_type_init_incomplete(struct drgn_type *type, const char *tag)
+void drgn_class_type_init_incomplete(struct drgn_type *type, const char *tag,
+				     const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_CLASS;
 	type->_private.is_complete = false;
@@ -317,11 +334,13 @@ void drgn_class_type_init_incomplete(struct drgn_type *type, const char *tag)
 	type->_private.tag = tag;
 	type->_private.size = 0;
 	type->_private.num_members = 0;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_enum_type_init(struct drgn_type *type, const char *tag,
 			 struct drgn_type *compatible_type,
-			 size_t num_enumerators)
+			 size_t num_enumerators,
+			 const struct drgn_language *lang)
 {
 	assert(drgn_type_kind(compatible_type) == DRGN_TYPE_INT);
 	type->_private.kind = DRGN_TYPE_ENUM;
@@ -331,9 +350,11 @@ void drgn_enum_type_init(struct drgn_type *type, const char *tag,
 	type->_private.type = compatible_type;
 	type->_private.qualifiers = 0;
 	type->_private.num_enumerators = num_enumerators;
+	type->_private.lang = drgn_language_default(lang);
 }
 
-void drgn_enum_type_init_incomplete(struct drgn_type *type, const char *tag)
+void drgn_enum_type_init_incomplete(struct drgn_type *type, const char *tag,
+				    const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_ENUM;
 	type->_private.is_complete = false;
@@ -342,10 +363,12 @@ void drgn_enum_type_init_incomplete(struct drgn_type *type, const char *tag)
 	type->_private.type = NULL;
 	type->_private.qualifiers = 0;
 	type->_private.num_enumerators = 0;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_typedef_type_init(struct drgn_type *type, const char *name,
-			    struct drgn_qualified_type aliased_type)
+			    struct drgn_qualified_type aliased_type,
+			    const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_TYPEDEF;
 	type->_private.is_complete = drgn_type_is_complete(aliased_type.type);
@@ -358,10 +381,12 @@ void drgn_typedef_type_init(struct drgn_type *type, const char *name,
 	type->_private.name = name;
 	type->_private.type = aliased_type.type;
 	type->_private.qualifiers = aliased_type.qualifiers;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_pointer_type_init(struct drgn_type *type, uint64_t size,
-			    struct drgn_qualified_type referenced_type)
+			    struct drgn_qualified_type referenced_type,
+			    const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_POINTER;
 	type->_private.is_complete = true;
@@ -369,10 +394,12 @@ void drgn_pointer_type_init(struct drgn_type *type, uint64_t size,
 	type->_private.size = size;
 	type->_private.type = referenced_type.type;
 	type->_private.qualifiers = referenced_type.qualifiers;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_array_type_init(struct drgn_type *type, uint64_t length,
-			  struct drgn_qualified_type element_type)
+			  struct drgn_qualified_type element_type,
+			  const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_ARRAY;
 	type->_private.is_complete = true;
@@ -380,10 +407,12 @@ void drgn_array_type_init(struct drgn_type *type, uint64_t length,
 	type->_private.length = length;
 	type->_private.type = element_type.type;
 	type->_private.qualifiers = element_type.qualifiers;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_array_type_init_incomplete(struct drgn_type *type,
-				     struct drgn_qualified_type element_type)
+				     struct drgn_qualified_type element_type,
+				     const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_ARRAY;
 	type->_private.is_complete = false;
@@ -391,11 +420,13 @@ void drgn_array_type_init_incomplete(struct drgn_type *type,
 	type->_private.length = 0;
 	type->_private.type = element_type.type;
 	type->_private.qualifiers = element_type.qualifiers;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 void drgn_function_type_init(struct drgn_type *type,
 			     struct drgn_qualified_type return_type,
-			     size_t num_parameters, bool is_variadic)
+			     size_t num_parameters, bool is_variadic,
+			     const struct drgn_language *lang)
 {
 	type->_private.kind = DRGN_TYPE_FUNCTION;
 	type->_private.is_complete = true;
@@ -404,6 +435,7 @@ void drgn_function_type_init(struct drgn_type *type,
 	type->_private.qualifiers = return_type.qualifiers;
 	type->_private.num_parameters = num_parameters;
 	type->_private.is_variadic = is_variadic;
+	type->_private.lang = drgn_language_default(lang);
 }
 
 struct drgn_type_pair {
@@ -696,13 +728,15 @@ drgn_qualified_type_eq(struct drgn_qualified_type a,
 LIBDRGN_PUBLIC struct drgn_error *
 drgn_format_type_name(struct drgn_qualified_type qualified_type, char **ret)
 {
-	return drgn_language_c.format_type_name(qualified_type, ret);
+	const struct drgn_language *lang = drgn_type_lang(qualified_type.type);
+	return lang->format_type_name(qualified_type, ret);
 }
 
 LIBDRGN_PUBLIC struct drgn_error *
 drgn_format_type(struct drgn_qualified_type qualified_type, char **ret)
 {
-	return drgn_language_c.format_type(qualified_type, ret);
+	const struct drgn_language *lang = drgn_type_lang(qualified_type.type);
+	return lang->format_type(qualified_type, ret);
 }
 
 bool drgn_type_is_integer(struct drgn_type *type)

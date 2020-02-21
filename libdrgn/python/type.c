@@ -998,7 +998,7 @@ DrgnType *int_type(PyObject *self, PyObject *args, PyObject *kwds)
 	if (!type_obj)
 		return NULL;
 
-	drgn_int_type_init(type_obj->type, name, size, is_signed);
+	drgn_int_type_init(type_obj->type, name, size, is_signed, NULL);
 
 	if (drgn_type_name(type_obj->type) == name &&
 	    _PyDict_SetItemId(type_obj->attr_cache, &DrgnType_attr_name.id,
@@ -1033,7 +1033,7 @@ DrgnType *bool_type(PyObject *self, PyObject *args, PyObject *kwds)
 	if (!type_obj)
 		return NULL;
 
-	drgn_bool_type_init(type_obj->type, name, size);
+	drgn_bool_type_init(type_obj->type, name, size, NULL);
 
 	if (drgn_type_name(type_obj->type) == name &&
 	    _PyDict_SetItemId(type_obj->attr_cache, &DrgnType_attr_name.id,
@@ -1068,7 +1068,7 @@ DrgnType *float_type(PyObject *self, PyObject *args, PyObject *kwds)
 	if (!type_obj)
 		return NULL;
 
-	drgn_float_type_init(type_obj->type, name, size);
+	drgn_float_type_init(type_obj->type, name, size, NULL);
 
 	if (drgn_type_name(type_obj->type) == name &&
 	    _PyDict_SetItemId(type_obj->attr_cache, &DrgnType_attr_name.id,
@@ -1123,7 +1123,7 @@ DrgnType *complex_type(PyObject *self, PyObject *args, PyObject *kwds)
 	if (!type_obj)
 		return NULL;
 
-	drgn_complex_type_init(type_obj->type, name, size, real_type);
+	drgn_complex_type_init(type_obj->type, name, size, real_type, NULL);
 
 	if (drgn_type_name(type_obj->type) == name &&
 	    _PyDict_SetItemId(type_obj->attr_cache, &DrgnType_attr_name.id,
@@ -1337,13 +1337,13 @@ static DrgnType *compound_type(PyObject *tag_obj, PyObject *size_obj,
 	if (members_obj == Py_None) {
 		switch (kind) {
 		case DRGN_TYPE_STRUCT:
-			drgn_struct_type_init_incomplete(type_obj->type, tag);
+			drgn_struct_type_init_incomplete(type_obj->type, tag, NULL);
 			break;
 		case DRGN_TYPE_UNION:
-			drgn_union_type_init_incomplete(type_obj->type, tag);
+			drgn_union_type_init_incomplete(type_obj->type, tag, NULL);
 			break;
 		case DRGN_TYPE_CLASS:
-			drgn_class_type_init_incomplete(type_obj->type, tag);
+			drgn_class_type_init_incomplete(type_obj->type, tag, NULL);
 			break;
 		default:
 			DRGN_UNREACHABLE();
@@ -1352,15 +1352,15 @@ static DrgnType *compound_type(PyObject *tag_obj, PyObject *size_obj,
 		switch (kind) {
 		case DRGN_TYPE_STRUCT:
 			drgn_struct_type_init(type_obj->type, tag, size,
-					      num_members);
+					      num_members, NULL);
 			break;
 		case DRGN_TYPE_UNION:
 			drgn_union_type_init(type_obj->type, tag, size,
-					     num_members);
+					     num_members, NULL);
 			break;
 		case DRGN_TYPE_CLASS:
 			drgn_class_type_init(type_obj->type, tag, size,
-					     num_members);
+					     num_members, NULL);
 			break;
 		default:
 			DRGN_UNREACHABLE();
@@ -1604,10 +1604,10 @@ DrgnType *enum_type(PyObject *self, PyObject *args, PyObject *kwds)
 		goto err;
 
 	if (enumerators_obj == Py_None) {
-		drgn_enum_type_init_incomplete(type_obj->type, tag);
+		drgn_enum_type_init_incomplete(type_obj->type, tag, NULL);
 	} else {
 		drgn_enum_type_init(type_obj->type, tag, compatible_type,
-				    num_enumerators);
+				    num_enumerators, NULL);
 	}
 	return type_obj;
 
@@ -1653,7 +1653,7 @@ DrgnType *typedef_type(PyObject *self, PyObject *args, PyObject *kwds)
 		return NULL;
 	}
 
-	drgn_typedef_type_init(type_obj->type, name, aliased_type);
+	drgn_typedef_type_init(type_obj->type, name, aliased_type, NULL);
 	return type_obj;
 }
 
@@ -1680,7 +1680,7 @@ DrgnType *pointer_type(PyObject *self, PyObject *args, PyObject *kwds)
 		return NULL;
 	}
 
-	drgn_pointer_type_init(type_obj->type, size, referenced_type);
+	drgn_pointer_type_init(type_obj->type, size, referenced_type, NULL);
 	return type_obj;
 }
 
@@ -1723,9 +1723,9 @@ DrgnType *array_type(PyObject *self, PyObject *args, PyObject *kwds)
 	}
 
 	if (length_obj == Py_None)
-		drgn_array_type_init_incomplete(type_obj->type, element_type);
+		drgn_array_type_init_incomplete(type_obj->type, element_type, NULL);
 	else
-		drgn_array_type_init(type_obj->type, length, element_type);
+		drgn_array_type_init(type_obj->type, length, element_type, NULL);
 	return type_obj;
 }
 
@@ -1835,7 +1835,7 @@ DrgnType *function_type(PyObject *self, PyObject *args, PyObject *kwds)
 		goto err;
 
 	drgn_function_type_init(type_obj->type, return_type, num_parameters,
-				is_variadic);
+				is_variadic, NULL);
 	return type_obj;
 
 err:

@@ -50,6 +50,27 @@ drgn_program_platform(struct drgn_program *prog)
 	return prog->has_platform ? &prog->platform : NULL;
 }
 
+void drgn_program_init_language(struct drgn_program *prog)
+{
+	struct drgn_error *err;
+	struct drgn_qualified_type main_type;
+	struct drgn_object res;
+
+	drgn_object_init(&res, prog);
+
+	// Use the CU from the "main" object as the lang for the whole program.
+	err = drgn_program_find_object(prog, "main", NULL,
+				       DRGN_FIND_OBJECT_ANY, &res);
+	if (!err) {
+		prog->lang = drgn_type_lang(res.type);
+		return;
+	}
+
+	// We could not deduce type or find result from "main".
+	// TODO have a better fallback here.
+	prog->lang = &drgn_language_c;
+}
+
 void drgn_program_set_platform(struct drgn_program *prog,
 			       const struct drgn_platform *platform)
 {
@@ -529,6 +550,14 @@ struct drgn_error *drgn_program_get_dwfl(struct drgn_program *prog, Dwfl **ret)
 	return NULL;
 }
 
+const struct drgn_language *drgn_program_get_lang(struct drgn_program *prog) {
+	if (prog->lang) {
+		return prog->lang;
+	}
+	// TODO handle fallback better.
+	return &drgn_language_c;
+}
+
 static struct drgn_error *
 userspace_report_debug_info(struct drgn_program *prog,
 			    struct drgn_dwarf_index *dindex,
@@ -637,6 +666,7 @@ drgn_program_load_debug_info(struct drgn_program *prog, const char **paths,
 		dwfl_getdwarf(prog->_dicache->dindex.dwfl,
 			      drgn_set_platform_from_dwarf, prog, 0);
 	}
+	drgn_program_init_language(prog);
 	return err;
 }
 
@@ -889,7 +919,7 @@ drgn_program_find_type(struct drgn_program *prog, const char *name,
 		       const char *filename, struct drgn_qualified_type *ret)
 {
 	return drgn_type_index_find(&prog->tindex, name, filename,
-				    &drgn_language_c, ret);
+				    drgn_program_get_lang(prog), ret);
 }
 
 LIBDRGN_PUBLIC struct drgn_error *

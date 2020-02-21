@@ -178,9 +178,10 @@ extern struct drgn_type drgn_void_type;
  * @c NULL.
  * @param[in] size Size of the type in bytes.
  * @param[in] is_signed Whether the type is signed.
+ * @param[in] lang Language of this type.
  */
 void drgn_int_type_init(struct drgn_type *type, const char *name, uint64_t size,
-			bool is_signed);
+			bool is_signed, const struct drgn_language *lang);
 
 /**
  * Initialize a boolean type.
@@ -189,9 +190,10 @@ void drgn_int_type_init(struct drgn_type *type, const char *name, uint64_t size,
  * @param[in] name Name of the type. This string is not copied. It must not be
  * @c NULL.
  * @param[in] size Size of the type in bytes.
+ * @param[in] lang Language of this type.
  */
 void drgn_bool_type_init(struct drgn_type *type, const char *name,
-			 uint64_t size);
+			 uint64_t size, const struct drgn_language *lang);
 
 /**
  * Initialize a floating-point type.
@@ -200,9 +202,10 @@ void drgn_bool_type_init(struct drgn_type *type, const char *name,
  * @param[in] name Name of the type. This string is not copied. It must not be
  * @c NULL.
  * @param[in] size Size of the type in bytes.
+ * @param[in] lang Language of this type.
  */
 void drgn_float_type_init(struct drgn_type *type, const char *name,
-			  uint64_t size);
+			  uint64_t size, const struct drgn_language *lang);
 
 /**
  * Initialize a complex type.
@@ -213,9 +216,11 @@ void drgn_float_type_init(struct drgn_type *type, const char *name,
  * @param[in] size Size of the type in bytes.
  * @param[in] real_type The corresponding real type. It must not be @c NULL and
  * must be a floating-point or integer type.
+ * @param[in] lang Language of this type.
  */
 void drgn_complex_type_init(struct drgn_type *type, const char *name,
-			    uint64_t size, struct drgn_type *real_type);
+			    uint64_t size, struct drgn_type *real_type,
+			    const struct drgn_language *lang);
 
 /**
  * Initialize a member of a type.
@@ -266,9 +271,11 @@ static inline void drgn_type_member_deinit(struct drgn_type *type, size_t i)
  * if the type is anonymous.
  * @param[in] size Size of the type in bytes.
  * @param[in] num_members The number of members in the type.
+ * @param[in] lang Language of this type.
  */
 void drgn_struct_type_init(struct drgn_type *type, const char *tag,
-			   uint64_t size, size_t num_members);
+			   uint64_t size, size_t num_members,
+			   const struct drgn_language *lang);
 
 /**
  * Initialize an incomplete structure type.
@@ -279,8 +286,10 @@ void drgn_struct_type_init(struct drgn_type *type, const char *tag,
  * @param[out] type Type to initialize.
  * @param[in] tag Name of the type. This string is not copied. It may be @c NULL
  * if the type is anonymous.
+ * @param[in] lang Language of this type.
  */
-void drgn_struct_type_init_incomplete(struct drgn_type *type, const char *tag);
+void drgn_struct_type_init_incomplete(struct drgn_type *type, const char *tag,
+				      const struct drgn_language *lang);
 
 /**
  * Initialize a union type.
@@ -288,14 +297,17 @@ void drgn_struct_type_init_incomplete(struct drgn_type *type, const char *tag);
  * @sa drgn_struct_type_init().
  */
 void drgn_union_type_init(struct drgn_type *type, const char *tag,
-			  uint64_t size, size_t num_members);
+			  uint64_t size, size_t num_members,
+			  const struct drgn_language *lang);
 
 /**
  * Initialize an incomplete union type.
  *
  * @sa drgn_struct_type_init_incomplete().
+ * @param[in] lang Language of this type.
  */
-void drgn_union_type_init_incomplete(struct drgn_type *type, const char *tag);
+void drgn_union_type_init_incomplete(struct drgn_type *type, const char *tag,
+				     const struct drgn_language *lang);
 
 /**
  * Initialize a class type.
@@ -306,9 +318,11 @@ void drgn_union_type_init_incomplete(struct drgn_type *type, const char *tag);
  * @param[in] tag Name of the type.
  * @param[in] size Size of the type in bytes.
  * @param[in] num_members The number of members in the type.
+ * @param[in] lang Language of this type.
  */
 void drgn_class_type_init(struct drgn_type *type, const char *tag,
-			  uint64_t size, size_t num_members);
+			  uint64_t size, size_t num_members,
+			  const struct drgn_language *lang);
 
 /**
  * Initialize an incomplete class type.
@@ -318,8 +332,10 @@ void drgn_class_type_init(struct drgn_type *type, const char *tag,
  *
  * @param[out] type Type to initialize.
  * @param[int] tag Name of the type.
+ * @param[in] lang Language of this type.
  */
-void drgn_class_type_init_incomplete(struct drgn_type *type, const char *tag);
+void drgn_class_type_init_incomplete(struct drgn_type *type, const char *tag,
+				     const struct drgn_language *lang);
 
 /**
  * Initialize a signed enumerator of a type.
@@ -371,10 +387,12 @@ static inline void drgn_type_enumerator_init_unsigned(struct drgn_type *type,
  * @param[in] compatible_type Type compatible with this enumerated type. It must
  * be an integer type.
  * @param[in] num_enumerators The number of enumerators in the type.
+ * @param[in] lang Language of this type.
  */
 void drgn_enum_type_init(struct drgn_type *type, const char *tag,
 			 struct drgn_type *compatible_type,
-			 size_t num_enumerators);
+			 size_t num_enumerators,
+			 const struct drgn_language *lang);
 
 /**
  * Initialize an incomplete enumerated type.
@@ -384,8 +402,10 @@ void drgn_enum_type_init(struct drgn_type *type, const char *tag,
  * @param[out] type Type to initialize.
  * @param[in] tag Name of the type. This string is not copied. It may be @c NULL
  * if the type is anonymous.
+ * @param[in] lang Language of this type.
  */
-void drgn_enum_type_init_incomplete(struct drgn_type *type, const char *tag);
+void drgn_enum_type_init_incomplete(struct drgn_type *type, const char *tag,
+				    const struct drgn_language *lang);
 
 /**
  * Initialize a typedef type.
@@ -394,9 +414,11 @@ void drgn_enum_type_init_incomplete(struct drgn_type *type, const char *tag);
  * @param[in] name Name of the type. This string is not copied. It must not be
  * @c NULL.
  * @param[in] aliased_type Type aliased by the typedef.
+ * @param[in] lang Language of this type.
  */
 void drgn_typedef_type_init(struct drgn_type *type, const char *name,
-			    struct drgn_qualified_type aliased_type);
+			    struct drgn_qualified_type aliased_type,
+			    const struct drgn_language *lang);
 
 /**
  * Initialize a pointer type.
@@ -404,9 +426,11 @@ void drgn_typedef_type_init(struct drgn_type *type, const char *name,
  * @param[out] type Type to initialize.
  * @param[in] size Size of the type in bytes.
  * @param[in] referenced_type Type referenced by the pointer type.
+ * @param[in] lang Language of this type.
  */
 void drgn_pointer_type_init(struct drgn_type *type, uint64_t size,
-			    struct drgn_qualified_type referenced_type);
+			    struct drgn_qualified_type referenced_type,
+			    const struct drgn_language *lang);
 
 /**
  * Initialize an array type.
@@ -414,9 +438,11 @@ void drgn_pointer_type_init(struct drgn_type *type, uint64_t size,
  * @param[out] type Type to initialize.
  * @param[in] length Number of elements in the array type.
  * @param[in] element_type Type of an element in the array type.
+ * @param[in] lang Language of this type.
  */
 void drgn_array_type_init(struct drgn_type *type, uint64_t length,
-			  struct drgn_qualified_type element_type);
+			  struct drgn_qualified_type element_type,
+			  const struct drgn_language *lang);
 
 /**
  * Initialize an incomplete array type.
@@ -425,9 +451,11 @@ void drgn_array_type_init(struct drgn_type *type, uint64_t length,
  *
  * @param[out] type Type to initialize.
  * @param[in] element_type Type of an element in the array type.
+ * @param[in] lang Language of this type.
  */
 void drgn_array_type_init_incomplete(struct drgn_type *type,
-				     struct drgn_qualified_type element_type);
+				     struct drgn_qualified_type element_type,
+				     const struct drgn_language *lang);
 
 /**
  * Initialize a parameter of a type.
@@ -472,10 +500,13 @@ static inline void drgn_type_parameter_deinit(struct drgn_type *type, size_t i)
  * @param[in] num_parameters The number of parameters accepted by the function
  * type.
  * @param[in] is_variadic Whether the function type is variadic.
+ * @param[in] lang Language of this type.
  */
 void drgn_function_type_init(struct drgn_type *type,
 			     struct drgn_qualified_type return_type,
-			     size_t num_parameters, bool is_variadic);
+			     size_t num_parameters, bool is_variadic,
+			     const struct drgn_language *lang);
+
 
 /** @} */
 

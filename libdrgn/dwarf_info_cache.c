@@ -288,22 +288,23 @@ drgn_base_type_from_dwarf(struct drgn_dwarf_info_cache *dicache, Dwarf_Die *die,
 	}
 
 	type = malloc(sizeof(*type));
+	const struct drgn_language *lang = drgn_language_from_dwarf(die);
 	if (!type)
 		return &drgn_enomem;
 	switch (encoding) {
 	case DW_ATE_boolean:
-		drgn_bool_type_init(type, name, size);
+		drgn_bool_type_init(type, name, size, lang);
 		break;
 	case DW_ATE_float:
-		drgn_float_type_init(type, name, size);
+		drgn_float_type_init(type, name, size, lang);
 		break;
 	case DW_ATE_signed:
 	case DW_ATE_signed_char:
-		drgn_int_type_init(type, name, size, true);
+		drgn_int_type_init(type, name, size, true, lang);
 		break;
 	case DW_ATE_unsigned:
 	case DW_ATE_unsigned_char:
-		drgn_int_type_init(type, name, size, false);
+		drgn_int_type_init(type, name, size, false, lang);
 		break;
 	/*
 	 * GCC also supports complex integer types, but DWARF 4 doesn't have an
@@ -328,7 +329,7 @@ drgn_base_type_from_dwarf(struct drgn_dwarf_info_cache *dicache, Dwarf_Die *die,
 			return drgn_error_create(DRGN_ERROR_OTHER,
 						 "DW_AT_type of DW_ATE_complex_float is not a floating-point or integer type");
 		}
-		drgn_complex_type_init(type, name, size, real_type.type);
+		drgn_complex_type_init(type, name, size, real_type.type, lang);
 		break;
 	}
 	default:
@@ -560,6 +561,7 @@ drgn_compound_type_from_dwarf(struct drgn_dwarf_info_cache *dicache,
 	size_t num_members = 0, capacity = 0;
 	bool little_endian;
 	int r;
+	const struct drgn_language *lang = drgn_language_from_dwarf(die);
 
 	switch (kind) {
 	case DRGN_TYPE_STRUCT:
@@ -614,13 +616,13 @@ drgn_compound_type_from_dwarf(struct drgn_dwarf_info_cache *dicache,
 	if (declaration) {
 		switch (kind) {
 		case DRGN_TYPE_STRUCT:
-			drgn_struct_type_init_incomplete(type, tag);
+			drgn_struct_type_init_incomplete(type, tag, lang);
 			break;
 		case DRGN_TYPE_UNION:
-			drgn_union_type_init_incomplete(type, tag);
+			drgn_union_type_init_incomplete(type, tag, lang);
 			break;
 		case DRGN_TYPE_CLASS:
-			drgn_class_type_init_incomplete(type, tag);
+			drgn_class_type_init_incomplete(type, tag, lang);
 			break;
 		default:
 			DRGN_UNREACHABLE();
@@ -673,12 +675,12 @@ drgn_compound_type_from_dwarf(struct drgn_dwarf_info_cache *dicache,
 	}
 
 	if (kind == DRGN_TYPE_UNION) {
-		drgn_union_type_init(type, tag, size, num_members);
+		drgn_union_type_init(type, tag, size, num_members, lang);
 	} else {
 		if (kind == DRGN_TYPE_STRUCT)
-			drgn_struct_type_init(type, tag, size, num_members);
+			drgn_struct_type_init(type, tag, size, num_members, lang);
 		else
-			drgn_class_type_init(type, tag, size, num_members);
+			drgn_class_type_init(type, tag, size, num_members, lang);
 		/*
 		 * Flexible array members are only allowed as the last member of
 		 * a structure with more than one named member. We defaulted
@@ -776,7 +778,7 @@ static void fallback_enum_compatible_types_init(void)
 
 			type = &fallback_enum_compatible_types[is_signed][shift];
 			drgn_int_type_init(type, "<unknown>", 1 << shift,
-					   is_signed);
+					   is_signed, NULL);
 		}
 	}
 }
@@ -836,6 +838,7 @@ drgn_enum_type_from_dwarf(struct drgn_dwarf_info_cache *dicache, Dwarf_Die *die,
 	size_t num_enumerators = 0, capacity = 0;
 	bool is_signed = false;
 	int r;
+	const struct drgn_language *lang = drgn_language_from_dwarf(die);
 
 	attr = dwarf_attr_integrate(die, DW_AT_name, &attr_mem);
 	if (attr) {
@@ -869,7 +872,7 @@ drgn_enum_type_from_dwarf(struct drgn_dwarf_info_cache *dicache, Dwarf_Die *die,
 		return &drgn_enomem;
 
 	if (declaration) {
-		drgn_enum_type_init_incomplete(type, tag);
+		drgn_enum_type_init_incomplete(type, tag, lang);
 		*ret = type;
 		return NULL;
 	}
@@ -936,7 +939,7 @@ drgn_enum_type_from_dwarf(struct drgn_dwarf_info_cache *dicache, Dwarf_Die *die,
 		}
 	}
 
-	drgn_enum_type_init(type, tag, compatible_type, num_enumerators);
+	drgn_enum_type_init(type, tag, compatible_type, num_enumerators, lang);
 	*ret = type;
 	return NULL;
 
@@ -955,6 +958,7 @@ drgn_typedef_type_from_dwarf(struct drgn_dwarf_info_cache *dicache,
 	struct drgn_type *type;
 	struct drgn_qualified_type aliased_type;
 	const char *name;
+	const struct drgn_language *lang = drgn_language_from_dwarf(die);
 
 	name = dwarf_diename(die);
 	if (!name) {
@@ -976,7 +980,8 @@ drgn_typedef_type_from_dwarf(struct drgn_dwarf_info_cache *dicache,
 		return err;
 	}
 
-	drgn_typedef_type_init(type, name, aliased_type);
+	drgn_typedef_type_init(type, name, aliased_type, lang);
+
 	*ret = type;
 	return NULL;
 }
@@ -1166,6 +1171,7 @@ drgn_function_type_from_dwarf(struct drgn_dwarf_info_cache *dicache,
 	size_t num_parameters = 0, capacity = 0;
 	bool is_variadic = false;
 	int r;
+	const struct drgn_language *lang = drgn_language_from_dwarf(die);
 
 	if (dwarf_tag(die) == DW_TAG_subroutine_type)
 		tag_name = "DW_TAG_subroutine_type";
@@ -1233,7 +1239,7 @@ drgn_function_type_from_dwarf(struct drgn_dwarf_info_cache *dicache,
 	if (err)
 		goto err;
 
-	drgn_function_type_init(type, return_type, num_parameters, is_variadic);
+	drgn_function_type_init(type, return_type, num_parameters, is_variadic, lang);
 	*ret = type;
 	return NULL;
 

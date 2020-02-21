@@ -61,6 +61,9 @@ struct drgn_program {
 	struct drgn_object_index oindex;
 	struct drgn_memory_file_segment *file_segments;
 	size_t num_file_segments;
+
+	/* The language that corresponds to the 'default language' for the given program */
+	const struct drgn_language *lang;
 	/*
 	 * Valid iff <tt>flags & DRGN_PROGRAM_IS_LINUX_KERNEL</tt>.
 	 */
@@ -144,6 +147,11 @@ static inline bool drgn_program_is_64_bit(struct drgn_program *prog)
 }
 
 struct drgn_error *drgn_program_get_dwfl(struct drgn_program *prog, Dwfl **ret);
+
+/**
+ * Get the default language from a program.
+ */
+const struct drgn_language *drgn_program_get_lang(struct drgn_program *prog);
 
 /**
  * Find the @c NT_PRSTATUS note for the given thread ID.

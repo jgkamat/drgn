@@ -425,6 +425,8 @@ struct drgn_type {
 		enum drgn_primitive_type primitive;
 		/* These are the qualifiers for the wrapped type, not this type. */
 		enum drgn_qualifiers qualifiers;
+		/* The language that corresponds to the given type */
+		const struct drgn_language *lang;
 		/*
 		 * This mess of unions is used to make this as compact as possible. Use
 		 * the provided helpers and don't think about it.
@@ -732,6 +734,11 @@ static inline uint64_t drgn_type_length(struct drgn_type *type)
 {
 	assert(drgn_type_has_length(type));
 	return type->_private.length;
+}
+
+static inline const struct drgn_language *drgn_type_lang(struct drgn_type *type)
+{
+	return type->_private.lang;
 }
 
 /**

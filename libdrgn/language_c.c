@@ -3485,3 +3485,5 @@ const struct drgn_language drgn_language_c = {
 	.op_neg = c_op_neg,
 	.op_not = c_op_not,
 };
+
+const struct drgn_language *drgn_default_language = &drgn_language_c;

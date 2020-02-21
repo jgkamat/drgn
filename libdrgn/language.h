@@ -13,6 +13,7 @@
 #define DRGN_LANGUAGE_H
 
 #include "drgn.h"
+#include <dwarf.h>
 
 /**
  * @ingroup Internals
@@ -119,6 +120,9 @@ struct drgn_language {
 /** The C programming language. */
 extern const struct drgn_language drgn_language_c;
 
+/** Default language to be used */
+extern const struct drgn_language *drgn_default_language;
+
 /**
  * Return flags that should be passed through when formatting an object
  * recursively.
@@ -153,6 +157,43 @@ drgn_element_format_object_flags(enum drgn_format_object_flags flags)
 {
 	return (drgn_passthrough_format_object_flags(flags) |
 		(flags & DRGN_FORMAT_OBJECT_ELEMENT_TYPE_NAMES) >> 2);
+}
+
+/** Return the drgn language spec corresponding to the given dwfl language */
+static const struct drgn_language *drgn_dwarf_to_language(int dwfl_lang)
+{
+	switch (dwfl_lang) {
+	case DW_LANG_C:
+	case DW_LANG_C89:
+	case DW_LANG_C99:
+	case DW_LANG_C11:
+		return &drgn_language_c;
+	// TODO Provide proper fallback errors instead of defaulting to C always.
+	default:
+		return &drgn_language_c;
+	}
+}
+
+/**
+ * Deduce language which corresponds with the CU of the given dwarf die.
+ *
+ * @param[in] die Dwarf_Die used to retrieve the current language.
+ */
+static const struct drgn_language *drgn_language_from_dwarf(Dwarf_Die *die)
+{
+	Dwarf_Die cudie;
+	if (dwarf_cu_info(die->cu, NULL, NULL, &cudie, NULL, NULL, NULL, NULL) == 0) {
+		// TODO don't fail silently on failure
+		return drgn_dwarf_to_language(dwarf_srclang(&cudie));
+	}
+	return drgn_default_language;
+}
+
+static inline const struct drgn_language *drgn_language_default(
+	const struct drgn_language *l) {
+	if (l)
+		return l;
+	return drgn_default_language;
 }
 
 /** @} */
