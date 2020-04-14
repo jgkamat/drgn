@@ -230,6 +230,13 @@ drgn_parameter_type(struct drgn_type_parameter *parameter,
 	return drgn_lazy_type_evaluate(&parameter->type, ret);
 }
 
+LIBDRGN_PUBLIC struct drgn_error *
+drgn_template_parameter_type(struct drgn_template_parameter *template,
+			     struct drgn_qualified_type *ret)
+{
+	return drgn_lazy_type_evaluate(&template->type, ret);
+}
+
 static struct hash_pair drgn_type_dedupe_hash(struct drgn_type * const *entry)
 {
 	struct drgn_type *type = *entry;
@@ -457,6 +464,7 @@ struct drgn_error *drgn_complex_type_create(struct drgn_program *prog,
 }
 
 DEFINE_VECTOR_FUNCTIONS(drgn_type_member_vector)
+DEFINE_VECTOR_FUNCTIONS(drgn_template_parameter_vector)
 
 void drgn_compound_type_builder_init(struct drgn_compound_type_builder *builder,
 				     struct drgn_program *prog,
@@ -468,6 +476,7 @@ void drgn_compound_type_builder_init(struct drgn_compound_type_builder *builder,
 	builder->prog = prog;
 	builder->kind = kind;
 	drgn_type_member_vector_init(&builder->members);
+	drgn_template_parameter_vector_init(&builder->templates);
 }
 
 void
@@ -475,7 +484,10 @@ drgn_compound_type_builder_deinit(struct drgn_compound_type_builder *builder)
 {
 	for (size_t i = 0; i < builder->members.size; i++)
 		drgn_lazy_type_deinit(&builder->members.data[i].type);
+	for (size_t i = 0; i < builder->templates.size; i++)
+		drgn_lazy_type_deinit(&builder->templates.data[i].type);
 	drgn_type_member_vector_deinit(&builder->members);
+	drgn_template_parameter_vector_deinit(&builder->templates);
 }
 
 struct drgn_error *
@@ -500,11 +512,49 @@ drgn_compound_type_builder_add_member(struct drgn_compound_type_builder *builder
 }
 
 struct drgn_error *
+drgn_type_builder_add_template_parameter(struct drgn_program *prog,
+					 struct drgn_template_parameter_vector *templates,
+					 struct drgn_lazy_type type,
+					 const char *name)
+{
+	struct drgn_error *err = drgn_lazy_type_check_prog(&type, prog);
+	if (err)
+		return err;
+	struct drgn_template_parameter *template =
+		drgn_template_parameter_vector_append_entry(templates);
+	if (!template)
+		return &drgn_enomem;
+	template->type = type;
+	template->name = name;
+	return NULL;
+}
+
+struct drgn_error *
 drgn_compound_type_create(struct drgn_compound_type_builder *builder,
 			  const char *tag, uint64_t size,
 			  const struct drgn_language *lang,
+			  bool is_complete,
 			  struct drgn_type **ret)
 {
+	if (!is_complete && builder->templates.size == 0) {
+		enum drgn_type_kind kind = builder->kind;
+		assert(kind == DRGN_TYPE_STRUCT ||
+		       kind == DRGN_TYPE_UNION ||
+		       kind == DRGN_TYPE_CLASS);
+		struct drgn_type key = {
+			{
+				.kind = kind,
+				.is_complete = false,
+				.primitive = DRGN_NOT_PRIMITIVE_TYPE,
+				.tag = tag,
+				.program = builder->prog,
+				.language = lang ? lang :
+					drgn_program_language(builder->prog),
+			}
+		};
+		return find_or_create_type(&key, ret);
+	}
+
 	struct drgn_type *type = malloc(sizeof(*type));
 	if (!type)
 		return &drgn_enomem;
@@ -514,41 +564,22 @@ drgn_compound_type_create(struct drgn_compound_type_builder *builder,
 	}
 
 	drgn_type_member_vector_shrink_to_fit(&builder->members);
+	drgn_template_parameter_vector_shrink_to_fit(&builder->templates);
 
 	type->_private.kind = builder->kind;
-	type->_private.is_complete = true;
+	type->_private.is_complete = is_complete;
 	type->_private.primitive = DRGN_NOT_PRIMITIVE_TYPE;
 	type->_private.tag = tag;
 	type->_private.size = size;
 	type->_private.members = builder->members.data;
 	type->_private.num_members = builder->members.size;
+	type->_private.template_parameters = builder->templates.data;
+	type->_private.num_template_parameters = builder->templates.size;
 	type->_private.program = builder->prog;
 	type->_private.language =
 		lang ? lang : drgn_program_language(builder->prog);
 	*ret = type;
 	return NULL;
-}
-
-struct drgn_error *
-drgn_incomplete_compound_type_create(struct drgn_program *prog,
-				     enum drgn_type_kind kind, const char *tag,
-				     const struct drgn_language *lang,
-				     struct drgn_type **ret)
-{
-	assert(kind == DRGN_TYPE_STRUCT ||
-	       kind == DRGN_TYPE_UNION ||
-	       kind == DRGN_TYPE_CLASS);
-	struct drgn_type key = {
-		{
-			.kind = kind,
-			.is_complete = false,
-			.primitive = DRGN_NOT_PRIMITIVE_TYPE,
-			.tag = tag,
-			.program = prog,
-			.language = lang ? lang : drgn_program_language(prog),
-		}
-	};
-	return find_or_create_type(&key, ret);
 }
 
 DEFINE_VECTOR_FUNCTIONS(drgn_type_enumerator_vector)
@@ -828,6 +859,9 @@ drgn_function_type_create(struct drgn_function_type_builder *builder,
 	type->_private.language =
 		lang ? lang : drgn_program_language(builder->prog);
 	*ret = type;
+	// TODO fix this, functions can have templates
+	type->_private.num_template_parameters = 0;
+	type->_private.language = drgn_language_or_default(lang);
 	return NULL;
 }
 
@@ -987,6 +1021,54 @@ out_false:
 	return NULL;
 }
 
+static struct drgn_error *drgn_type_template_parameters_eq(
+	struct drgn_type *a,
+	struct drgn_type *b,
+	struct drgn_type_pair_set *cache,
+	int *depth, bool *ret)
+{
+	struct drgn_template_parameter *templates_a, *templates_b;
+	size_t num_a, num_b, i;
+
+	num_a = drgn_type_num_template_parameters(a);
+	num_b = drgn_type_num_template_parameters(b);
+	if (num_a != num_b)
+		goto out_false;
+
+	templates_a = drgn_type_template_parameters(a);
+	templates_b = drgn_type_template_parameters(b);
+	for (i = 0; i < num_a; i++) {
+		struct drgn_qualified_type type_a, type_b;
+		struct drgn_error *err;
+
+		if (!templates_a[i].name && !templates_b[i].name)
+			continue;
+		if (!templates_a[i].name || !templates_b[i].name ||
+		    strcmp(templates_a[i].name, templates_b[i].name) != 0)
+			goto out_false;
+
+		err = drgn_template_parameter_type(&templates_a[i], &type_a);
+		if (err)
+			return err;
+		err = drgn_template_parameter_type(&templates_b[i], &type_b);
+		if (err)
+			return err;
+		err = drgn_qualified_type_eq_impl(&type_a, &type_b, cache,
+						  depth, ret);
+		if (err)
+			return err;
+		if (!*ret)
+			return NULL;
+	}
+
+	*ret = true;
+	return NULL;
+
+out_false:
+	*ret = false;
+	return NULL;
+}
+
 static struct drgn_error *drgn_type_eq_impl(struct drgn_type *a,
 					    struct drgn_type *b,
 					    struct drgn_type_pair_set *cache,
@@ -1048,10 +1130,13 @@ static struct drgn_error *drgn_type_eq_impl(struct drgn_type *a,
 	case DRGN_TYPE_FLOAT:
 	case DRGN_TYPE_COMPLEX:
 		goto out_false;
-	/* These types are uniquely deduplicated only if incomplete. */
+	/* These types are uniquely deduplicated only if incomplete and without template parameters. */
 	case DRGN_TYPE_STRUCT:
 	case DRGN_TYPE_UNION:
 	case DRGN_TYPE_CLASS:
+		if (drgn_type_num_template_parameters(a) > 0)
+			break;
+		// Fallthrough
 	case DRGN_TYPE_ENUM:
 		if (!drgn_type_is_complete(a))
 			goto out_false;
@@ -1108,6 +1193,12 @@ static struct drgn_error *drgn_type_eq_impl(struct drgn_type *a,
 	if (drgn_type_has_is_variadic(a) &&
 	    drgn_type_is_variadic(a) != drgn_type_is_variadic(b))
 		goto out_false;
+	if (drgn_type_has_template_parameters(a) ||
+	    drgn_type_has_template_parameters(b)) {
+		err = drgn_type_template_parameters_eq(a, b, cache, depth, ret);
+		if (err || !*ret)
+			goto out;
+	}
 
 	*ret = true;
 	err = NULL;
@@ -1402,6 +1493,15 @@ void drgn_program_deinit_types(struct drgn_program *prog)
 			for (size_t j = 0; j < num_parameters; j++)
 				drgn_lazy_type_deinit(&parameters[j].type);
 			free(parameters);
+		}
+		if (drgn_type_has_template_parameters(type)) {
+			size_t num_templates;
+			struct drgn_template_parameter *templates;
+			num_templates = drgn_type_num_template_parameters(type);
+			templates = drgn_type_template_parameters(type);
+			for (size_t i = 0; i < num_templates; i++)
+				drgn_lazy_type_deinit(&templates[i].type);
+			free(templates);
 		}
 		free(type);
 	}

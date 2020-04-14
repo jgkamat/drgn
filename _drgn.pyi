@@ -529,6 +529,7 @@ class Program:
         tag: Optional[str],
         size: IntegerLike,
         members: Sequence[TypeMember],
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = None,
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -549,6 +550,7 @@ class Program:
         tag: Optional[str],
         size: None = None,
         members: None = None,
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = None,
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -561,6 +563,7 @@ class Program:
         tag: Optional[str],
         size: IntegerLike,
         members: Sequence[TypeMember],
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = None,
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -576,6 +579,7 @@ class Program:
         tag: Optional[str],
         size: None = None,
         members: None = None,
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = None,
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -588,6 +592,7 @@ class Program:
         tag: Optional[str],
         size: IntegerLike,
         members: Sequence[TypeMember],
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = None,
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -603,6 +608,7 @@ class Program:
         tag: Optional[str],
         size: None = None,
         members: None = None,
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = None,
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -1511,6 +1517,13 @@ class Type:
     Whether this type takes a variable number of arguments. This is only
     present for function types.
     """
+
+    template_parameters: Sequence[TypeTemplateParameter]
+    """
+    List of template parameters of this type.
+
+    This is valid for structures, unions, and classes.
+    """
     def type_name(self) -> str:
         """Get a descriptive full name of this type."""
         ...
@@ -1621,6 +1634,24 @@ class TypeParameter:
 
     name: Optional[str]
     """Parameter name, or ``None`` if the parameter is unnamed."""
+
+class TypeTemplateParameter:
+    """
+    A ``TypeTemplateParameter`` represents a template parameter.
+
+    :param type: Type of the template parameter. This may be a :class:`Type` or ``None``.
+    :param name: Name of the template parameter. This may be ``None`` if the parameter is
+        unnamed.
+    """
+
+    def __init__(
+        self, type: Union[Type, Callable[[], Type]], name: Optional[str] = None
+    ) -> None: ...
+    type: Type
+    """Template type."""
+
+    name: Optional[str]
+    """Template name, or ``None`` if the template is unnamed."""
 
 class TypeKind(enum.Enum):
     """A ``TypeKind`` represents a kind of type."""

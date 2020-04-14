@@ -12,6 +12,7 @@ from drgn import (
     TypeKind,
     TypeMember,
     TypeParameter,
+    TypeTemplateParameter,
     sizeof,
 )
 from tests import DEFAULT_LANGUAGE, MockProgramTestCase
@@ -267,7 +268,7 @@ class TestType(MockProgramTestCase):
 
         self.assertEqual(
             repr(t),
-            "prog.struct_type(tag='point', size=8, members=(TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='x', bit_offset=0), TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='y', bit_offset=32)))",
+            "prog.struct_type(tag='point', size=8, members=(TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='x', bit_offset=0), TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='y', bit_offset=32)), template_parameters=())",
         )
         self.assertEqual(sizeof(t), 8)
 
@@ -299,7 +300,7 @@ class TestType(MockProgramTestCase):
         self.assertEqual(t.size, 0)
         self.assertEqual(t.members, ())
         self.assertTrue(t.is_complete())
-        self.assertEqual(repr(t), "prog.struct_type(tag='color', size=0, members=())")
+        self.assertEqual(repr(t), "prog.struct_type(tag='color', size=0, members=(), template_parameters=())")
 
         t = self.prog.struct_type("color")
         self.assertEqual(t.kind, TypeKind.STRUCT)
@@ -309,7 +310,8 @@ class TestType(MockProgramTestCase):
         self.assertIsNone(t.members)
         self.assertFalse(t.is_complete())
         self.assertEqual(
-            repr(t), "prog.struct_type(tag='color', size=None, members=None)"
+            repr(t),
+            "prog.struct_type(tag='color', size=None, members=None, template_parameters=())",
         )
 
         t = self.prog.struct_type(None, None, None)
@@ -319,7 +321,10 @@ class TestType(MockProgramTestCase):
         self.assertIsNone(t.size)
         self.assertIsNone(t.members)
         self.assertFalse(t.is_complete())
-        self.assertEqual(repr(t), "prog.struct_type(tag=None, size=None, members=None)")
+        self.assertEqual(
+            repr(t),
+            "prog.struct_type(tag=None, size=None, members=None, template_parameters=())",
+        )
 
         self.assertRaises(TypeError, self.prog.struct_type, 4)
         self.assertRaisesRegex(
@@ -464,7 +469,7 @@ class TestType(MockProgramTestCase):
 
         self.assertEqual(
             repr(t),
-            "prog.union_type(tag='option', size=4, members=(TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='x', bit_offset=0), TypeMember(type=prog.int_type(name='unsigned int', size=4, is_signed=False), name='y', bit_offset=0)))",
+            "prog.union_type(tag='option', size=4, members=(TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='x', bit_offset=0), TypeMember(type=prog.int_type(name='unsigned int', size=4, is_signed=False), name='y', bit_offset=0)), template_parameters=())",
         )
         self.assertEqual(sizeof(t), 4)
 
@@ -496,7 +501,10 @@ class TestType(MockProgramTestCase):
         self.assertEqual(t.size, 0)
         self.assertEqual(t.members, ())
         self.assertTrue(t.is_complete())
-        self.assertEqual(repr(t), "prog.union_type(tag='color', size=0, members=())")
+        self.assertEqual(
+            repr(t),
+            "prog.union_type(tag='color', size=0, members=(), template_parameters=())",
+        )
 
         t = self.prog.union_type("color")
         self.assertEqual(t.kind, TypeKind.UNION)
@@ -506,7 +514,8 @@ class TestType(MockProgramTestCase):
         self.assertIsNone(t.members)
         self.assertFalse(t.is_complete())
         self.assertEqual(
-            repr(t), "prog.union_type(tag='color', size=None, members=None)"
+            repr(t),
+            "prog.union_type(tag='color', size=None, members=None, template_parameters=())",
         )
 
         t = self.prog.union_type(None, None, None)
@@ -516,7 +525,10 @@ class TestType(MockProgramTestCase):
         self.assertIsNone(t.size)
         self.assertIsNone(t.members)
         self.assertFalse(t.is_complete())
-        self.assertEqual(repr(t), "prog.union_type(tag=None, size=None, members=None)")
+        self.assertEqual(
+            repr(t),
+            "prog.union_type(tag=None, size=None, members=None, template_parameters=())",
+        )
 
         self.assertRaises(TypeError, self.prog.union_type, 4)
         self.assertRaisesRegex(
@@ -668,7 +680,7 @@ class TestType(MockProgramTestCase):
 
         self.assertEqual(
             repr(t),
-            "prog.class_type(tag='coord', size=12, members=(TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='x', bit_offset=0), TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='y', bit_offset=32), TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='z', bit_offset=64)))",
+            "prog.class_type(tag='coord', size=12, members=(TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='x', bit_offset=0), TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='y', bit_offset=32), TypeMember(type=prog.int_type(name='int', size=4, is_signed=True), name='z', bit_offset=64)), template_parameters=())",
         )
         self.assertEqual(sizeof(t), 12)
 
@@ -702,7 +714,10 @@ class TestType(MockProgramTestCase):
         self.assertEqual(t.size, 0)
         self.assertEqual(t.members, ())
         self.assertTrue(t.is_complete())
-        self.assertEqual(repr(t), "prog.class_type(tag='color', size=0, members=())")
+        self.assertEqual(
+            repr(t),
+            "prog.class_type(tag='color', size=0, members=(), template_parameters=())",
+        )
 
         t = self.prog.class_type("color")
         self.assertEqual(t.kind, TypeKind.CLASS)
@@ -712,7 +727,8 @@ class TestType(MockProgramTestCase):
         self.assertIsNone(t.members)
         self.assertFalse(t.is_complete())
         self.assertEqual(
-            repr(t), "prog.class_type(tag='color', size=None, members=None)"
+            repr(t),
+            "prog.class_type(tag='color', size=None, members=None, template_parameters=())",
         )
 
         t = self.prog.class_type(None, None, None)
@@ -722,7 +738,10 @@ class TestType(MockProgramTestCase):
         self.assertIsNone(t.size)
         self.assertIsNone(t.members)
         self.assertFalse(t.is_complete())
-        self.assertEqual(repr(t), "prog.class_type(tag=None, size=None, members=None)")
+        self.assertEqual(
+            repr(t),
+            "prog.class_type(tag=None, size=None, members=None, template_parameters=())",
+        )
 
         self.assertRaises(TypeError, self.prog.class_type, 4)
         self.assertRaisesRegex(
@@ -1208,7 +1227,7 @@ class TestType(MockProgramTestCase):
 
         self.assertEqual(
             repr(t1),
-            "prog.struct_type(tag='foo', size=8, members=(TypeMember(type=prog.pointer_type(type=prog.struct_type(tag='foo', ...)), name='next', bit_offset=0),))",
+            "prog.struct_type(tag='foo', size=8, members=(TypeMember(type=prog.pointer_type(type=prog.struct_type(tag='foo', ...)), name='next', bit_offset=0),), template_parameters=())",
         )
 
     def test_cycle2(self):
@@ -1232,14 +1251,14 @@ class TestType(MockProgramTestCase):
 
         self.assertEqual(
             repr(t1),
-            "prog.struct_type(tag='list_head', size=16, members=(TypeMember(type=prog.pointer_type(type=prog.struct_type(tag='list_head', ...)), name='next', bit_offset=0), TypeMember(type=prog.pointer_type(type=prog.struct_type(tag='list_head', ...)), name='prev', bit_offset=8)))",
+            "prog.struct_type(tag='list_head', size=16, members=(TypeMember(type=prog.pointer_type(type=prog.struct_type(tag='list_head', ...)), name='next', bit_offset=0), TypeMember(type=prog.pointer_type(type=prog.struct_type(tag='list_head', ...)), name='prev', bit_offset=8)), template_parameters=())",
         )
 
     def test_infinite(self):
         f = lambda: self.prog.struct_type("foo", 0, (TypeMember(f, "next"),))
         self.assertEqual(
             repr(f()),
-            "prog.struct_type(tag='foo', size=0, members=(TypeMember(type=prog.struct_type(tag='foo', ...), name='next', bit_offset=0),))",
+            "prog.struct_type(tag='foo', size=0, members=(TypeMember(type=prog.struct_type(tag='foo', ...), name='next', bit_offset=0),), template_parameters=())",
         )
         with self.assertRaisesRegex(RecursionError, "maximum.*depth"):
             f() == f()
@@ -1567,4 +1586,29 @@ class TestTypeParameter(MockProgramTestCase):
         self.assertNotEqual(
             TypeParameter(self.prog.void_type(), "foo"),
             TypeParameter(self.prog.void_type(), None),
+        )
+
+
+class TestTypeTemplateParameter(MockProgramTestCase):
+    def test_struct_template_python(self):
+        t1 = self.prog.struct_type(
+            "point",
+            8,
+            (
+                TypeMember(self.prog.int_type("int", 4, True), "x", 0),
+                TypeMember(self.prog.int_type("int", 4, True), "y", 32),
+            ),
+            template_parameters=(
+                TypeTemplateParameter(self.prog.int_type("int", 4, True), "T"),
+                TypeTemplateParameter(self.prog.int_type("int", 4, True), "U"),
+            ),
+        )
+        self.assertEqual(len(t1.template_parameters), 2)
+        self.assertEqual(t1.template_parameters[0].name, "T")
+        self.assertEqual(t1.template_parameters[1].name, "U")
+        self.assertEqual(
+            t1.template_parameters[0].type, self.prog.int_type("int", 4, True)
+        )
+        self.assertEqual(
+            t1.template_parameters[1].type, self.prog.int_type("int", 4, True)
         )
