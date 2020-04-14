@@ -529,6 +529,7 @@ class Program:
         tag: Optional[str],
         size: IntegerLike,
         members: Sequence[TypeMember],
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = (),
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -539,6 +540,7 @@ class Program:
         :param tag: :attr:`Type.tag`
         :param size: :attr:`Type.size`
         :param members: :attr:`Type.members`
+        :param template_parameters: :attr:`Type.template_parameters`
         :param qualifiers: :attr:`Type.qualifiers`
         :param lang: :attr:`Type.language`
         """
@@ -549,6 +551,7 @@ class Program:
         tag: Optional[str],
         size: None = None,
         members: None = None,
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = (),
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -561,6 +564,7 @@ class Program:
         tag: Optional[str],
         size: IntegerLike,
         members: Sequence[TypeMember],
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = (),
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -576,6 +580,7 @@ class Program:
         tag: Optional[str],
         size: None = None,
         members: None = None,
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = (),
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -588,6 +593,7 @@ class Program:
         tag: Optional[str],
         size: IntegerLike,
         members: Sequence[TypeMember],
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = (),
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -603,6 +609,7 @@ class Program:
         tag: Optional[str],
         size: None = None,
         members: None = None,
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = (),
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -1511,6 +1518,13 @@ class Type:
     Whether this type takes a variable number of arguments. This is only
     present for function types.
     """
+
+    template_parameters: Sequence[TypeTemplateParameter]
+    """
+    List of template parameters of this type.
+
+    This is valid for structures, unions, and classes.
+    """
     def type_name(self) -> str:
         """Get a descriptive full name of this type."""
         ...
@@ -1621,6 +1635,25 @@ class TypeParameter:
 
     name: Optional[str]
     """Parameter name, or ``None`` if the parameter is unnamed."""
+
+class TypeTemplateParameter:
+    """
+    A ``TypeTemplateParameter`` represents a template parameter.
+    """
+
+    def __init__(
+        self, type: Union[Type, Callable[[], Type]], name: Optional[str] = None
+    ) -> None:
+        """
+        :param type: :attr:`TypeMember.type`; may also be a callable that
+            takes no arguments and returns a :class:`Type`.
+        :param name: :attr:`TypeMember.name`
+        """
+    type: Type
+    """Template type."""
+
+    name: Optional[str]
+    """Template name, or ``None`` if the template is unnamed."""
 
 class TypeKind(enum.Enum):
     """A ``TypeKind`` represents a kind of type."""

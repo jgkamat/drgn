@@ -449,6 +449,8 @@ struct drgn_type {
 		enum drgn_qualifiers qualifiers;
 		struct drgn_program *program;
 		const struct drgn_language *language;
+		size_t num_template_parameters;
+		struct drgn_template_parameter *template_parameters;
 		/*
 		 * This mess of unions is used to make this as compact as possible. Use
 		 * the provided helpers and don't think about it.
@@ -475,6 +477,12 @@ struct drgn_type {
 			struct drgn_type_parameter *parameters;
 		};
 	} _private;
+};
+
+/** Template parameter for a function or class */
+struct drgn_template_parameter {
+	struct drgn_lazy_parameter parameter;
+	const char *name;
 };
 
 /**
@@ -667,6 +675,44 @@ static inline size_t drgn_type_num_members(struct drgn_type *type)
 }
 
 /**
+ * Get whether a kind of type has template parameters. This is true for structure, union,
+ * and class types.
+ */
+static inline bool drgn_type_kind_has_template_parameters(enum drgn_type_kind kind)
+{
+	return (kind == DRGN_TYPE_STRUCT ||
+		kind == DRGN_TYPE_UNION ||
+		kind == DRGN_TYPE_CLASS);
+}
+/**
+ * Get whether a type has template parameters.
+ */
+static inline bool drgn_type_has_template_parameters(struct drgn_type *type)
+{
+	return drgn_type_kind_has_template_parameters(drgn_type_kind(type));
+}
+
+/**
+ * Get the template parameters of a type.
+ */
+static inline struct drgn_template_parameter *drgn_type_template_parameters(struct drgn_type *type)
+{
+	assert(drgn_type_has_template_parameters(type));
+	return type->_private.template_parameters;
+}
+
+/**
+ * Get the number of template parameters of a type.
+ * If the type is incomplete, this is always zero.
+ */
+static inline size_t drgn_type_num_template_parameters(struct drgn_type *type)
+{
+	assert(drgn_type_has_template_parameters(type));
+	return type->_private.num_template_parameters;
+}
+
+
+/**
  * Get whether a kind of type has a wrapped type. This is true for complex,
  * enumerated, typedef, pointer, array, and function types.
  */
@@ -835,6 +881,16 @@ struct drgn_error *drgn_member_type(struct drgn_type_member *member,
  */
 struct drgn_error *drgn_parameter_type(struct drgn_type_parameter *parameter,
 				       struct drgn_qualified_type *ret);
+
+/**
+ * Evaluate the type of a @ref drgn_type_template_parameter.
+ *
+ * @param[in] tempalte Template parameter.
+ * @param[out] ret Returned type.
+ * @return @c NULL on success, non-@c NULL on error.
+ */
+struct drgn_error *drgn_template_parameter_type(struct drgn_template_parameter *template_parameter,
+						struct drgn_qualified_type *ret);
 
 /**
  * Get the size of a type in bytes.

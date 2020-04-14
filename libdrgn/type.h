@@ -234,12 +234,14 @@ struct drgn_error *drgn_complex_type_create(struct drgn_program *prog,
 					    struct drgn_type **ret);
 
 DEFINE_VECTOR_TYPE(drgn_type_member_vector, struct drgn_type_member)
+DEFINE_VECTOR_TYPE(drgn_template_parameter_vector, struct drgn_template_parameter)
 
 /** Builder for members of a structure, union, or class type. */
 struct drgn_compound_type_builder {
 	struct drgn_program *prog;
 	enum drgn_type_kind kind;
 	struct drgn_type_member_vector members;
+	struct drgn_template_parameter_vector templates;
 };
 
 /**
@@ -272,16 +274,32 @@ drgn_compound_type_builder_add_member(struct drgn_compound_type_builder *builder
 				      uint64_t bit_field_size);
 
 /**
+ * Add a @ref drgn_type_template_parameter to a drgn__type_builder.
+ *
+ * Accepts the prog (builder->prog) and template parameter vector
+ * (&builder->templates) so it can be generalized.
+ *
+ * On success, @p builder takes ownership of @p type.
+ */
+struct drgn_error *
+drgn_type_builder_add_template_parameter(struct drgn_program *prog,
+					 struct drgn_template_parameter_vector *templates,
+					 struct drgn_lazy_parameter parameter,
+					 const char *name);
+
+/**
  * Create a structure, union, or class type.
  *
  * On success, this takes ownership of @p builder.
  *
  * @param[in] builder Builder containing members. @c type and @c name of each
- * member must remain valid for the lifetime of @c builder->prog.
+ * member must remain valid for the lifetime of @c builder->prog. If incomplete, builder
+ * must not contain any members.
  * @param[in] tag Name of the type. Not copied; must remain valid for the
  * lifetime of @c builder->prog. May be @c NULL if the type is anonymous.
- * @param[in] size Size of the type in bytes.
+ * @param[in] size Size of the type in bytes. Must be zero if the type is incomplete.
  * @param[in] lang Language of the type or @c NULL for the default language of
+ * @param[in] is_complete True if this type is complete.
  * @c builder->prog.
  * @param[out] ret Returned type.
  * @return @c NULL on success, non-@c NULL on error.
@@ -290,29 +308,8 @@ struct drgn_error *
 drgn_compound_type_create(struct drgn_compound_type_builder *builder,
 			  const char *tag, uint64_t size,
 			  const struct drgn_language *lang,
+			  bool is_complete,
 			  struct drgn_type **ret);
-
-/**
- * Create an incomplete structure, union, or class type.
- *
- * @c size and @c num_members are set to zero and @c is_complete is set to @c
- * false.
- *
- * @param[in] prog Program owning type.
- * @param[in] kind One of @ref DRGN_TYPE_STRUCT, @ref DRGN_TYPE_UNION, or @ref
- * DRGN_TYPE_CLASS.
- * @param[in] tag Name of the type. Not copied; must remain valid for the
- * lifetime of @p prog. May be @c NULL if the type is anonymous.
- * @param[in] lang Language of the type or @c NULL for the default language of
- * @p prog.
- * @param[out] ret Returned type.
- * @return @c NULL on success, non-@c NULL on error.
- */
-struct drgn_error *
-drgn_incomplete_compound_type_create(struct drgn_program *prog,
-				     enum drgn_type_kind kind, const char *tag,
-				     const struct drgn_language *lang,
-				     struct drgn_type **ret);
 
 DEFINE_VECTOR_TYPE(drgn_type_enumerator_vector, struct drgn_type_enumerator)
 

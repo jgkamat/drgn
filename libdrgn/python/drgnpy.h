@@ -142,6 +142,11 @@ typedef struct {
 	PyObject *name;
 } TypeParameter;
 
+typedef struct {
+	LazyParameter lazy_parameter;
+	PyObject *name;
+} TypeTemplateParameter;
+
 extern PyObject *Architecture_class;
 extern PyObject *FindObjectFlags_class;
 extern PyObject *PlatformFlags_class;
@@ -164,6 +169,7 @@ extern PyTypeObject Symbol_type;
 extern PyTypeObject TypeEnumerator_type;
 extern PyTypeObject TypeMember_type;
 extern PyTypeObject TypeParameter_type;
+extern PyTypeObject TypeTemplateParameter_type;
 extern PyObject *MissingDebugInfoError;
 extern PyObject *OutOfBoundsError;
 

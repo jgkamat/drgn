@@ -12,6 +12,7 @@ from drgn import (
     TypeKind,
     TypeMember,
     TypeParameter,
+    TypeTemplateParameter,
     sizeof,
 )
 from tests import DEFAULT_LANGUAGE, MockProgramTestCase
@@ -1581,4 +1582,29 @@ class TestTypeParameter(MockProgramTestCase):
         self.assertNotEqual(
             TypeParameter(self.prog.void_type(), "foo"),
             TypeParameter(self.prog.void_type(), None),
+        )
+
+
+class TestTypeTemplateParameter(MockProgramTestCase):
+    def test_struct_template_python(self):
+        t1 = self.prog.struct_type(
+            "point",
+            8,
+            (
+                TypeMember(self.prog.int_type("int", 4, True), "x", 0),
+                TypeMember(self.prog.int_type("int", 4, True), "y", 32),
+            ),
+            template_parameters=(
+                TypeTemplateParameter(self.prog.int_type("int", 4, True), "T"),
+                TypeTemplateParameter(self.prog.int_type("int", 4, True), "U"),
+            ),
+        )
+        self.assertEqual(len(t1.template_parameters), 2)
+        self.assertEqual(t1.template_parameters[0].name, "T")
+        self.assertEqual(t1.template_parameters[1].name, "U")
+        self.assertEqual(
+            t1.template_parameters[0].type, self.prog.int_type("int", 4, True)
+        )
+        self.assertEqual(
+            t1.template_parameters[1].type, self.prog.int_type("int", 4, True)
         )

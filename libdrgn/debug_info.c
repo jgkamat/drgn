@@ -1610,6 +1610,47 @@ err:
 	return err;
 }
 
+static struct drgn_error *parse_template(struct drgn_debug_info *dbinfo,
+					 Dwarf_Die *die,
+					 struct drgn_program *prog,
+					 const char* tag_name,
+					 struct drgn_template_parameter_vector *templates)
+{
+	struct drgn_error *err;
+	Dwarf_Attribute attr_mem;
+	Dwarf_Attribute *attr;
+	struct drgn_lazy_parameter template_parameter;
+	const char *name;
+
+	attr = dwarf_attr_integrate(die, DW_AT_name, &attr_mem);
+
+	if (attr) {
+		name = dwarf_formstring(attr);
+		if (!name) {
+			return drgn_error_create(DRGN_ERROR_OTHER,
+						 "DW_TAG_template_type_parameter has invalid DW_AT_name");
+		}
+	} else {
+		name = NULL;
+	}
+
+	err = drgn_lazy_type_from_dwarf(dbinfo, die, false,
+					"DW_TAG_template_type_parameter has invalid DW_AT_name",
+					tag_name,
+					&template_parameter);
+	if (err)
+		return err;
+
+
+	err = drgn_type_builder_add_template_parameter(
+		prog, templates, template_parameter, name);
+	if (err) {
+		drgn_lazy_parameter_deinit(&template_parameter);
+		return err;
+	}
+	return NULL;
+}
+
 static struct drgn_error *
 drgn_compound_type_from_dwarf(struct drgn_debug_info *dbinfo,
 			      Dwarf_Die *die, uint64_t bias,
@@ -1664,26 +1705,23 @@ drgn_compound_type_from_dwarf(struct drgn_debug_info *dbinfo,
 			return err;
 	}
 
-	if (declaration) {
-		return drgn_incomplete_compound_type_create(dbinfo->prog, kind,
-							    tag, lang, ret);
-	}
-
 	int size = dwarf_bytesize(die);
-	if (size == -1) {
+	if (size == -1 && !declaration) {
 		return drgn_error_format(DRGN_ERROR_OTHER,
-					 "%s has missing or invalid DW_AT_byte_size",
-					 dw_tag_str);
+					"%s has missing or invalid DW_AT_byte_size",
+					dw_tag_str);
 	}
 
 	struct drgn_compound_type_builder builder;
 	drgn_compound_type_builder_init(&builder, dbinfo->prog, kind);
 	bool little_endian;
-	dwarf_die_is_little_endian(die, false, &little_endian);
+	if (!declaration)
+		dwarf_die_is_little_endian(die, false, &little_endian);
 	Dwarf_Die member = {}, child;
 	int r = dwarf_child(die, &child);
 	while (r == 0) {
-		if (dwarf_tag(&child) == DW_TAG_member || dwarf_tag(&child) == DW_TAG_subprogram) {
+		if ((!declaration && dwarf_tag(&child) == DW_TAG_member) ||
+		    dwarf_tag(&child) == DW_TAG_subprogram) {
 			if (member.addr) {
 				err = parse_member(dbinfo, &member, bias,
 						   little_endian, false,
@@ -1692,6 +1730,12 @@ drgn_compound_type_from_dwarf(struct drgn_debug_info *dbinfo,
 					goto err;
 			}
 			member = child;
+		} else if (dwarf_tag(&child) == DW_TAG_template_type_parameter) {
+			err = parse_template(dbinfo, &child, builder.prog,
+					     "DW_TAG_template_type_parameter",
+					     &builder.templates);
+			if (err)
+				goto err;
 		}
 		r = dwarf_siblingof(&child, &child);
 	}
@@ -1700,6 +1744,11 @@ drgn_compound_type_from_dwarf(struct drgn_debug_info *dbinfo,
 					"libdw could not parse DIE children");
 		goto err;
 	}
+
+	if (declaration) {
+		return drgn_compound_type_create(&builder, tag, 0, lang, false, ret);
+	}
+
 	/*
 	 * Flexible array members are only allowed as the last member of a
 	 * structure with at least one other member.
@@ -1713,7 +1762,7 @@ drgn_compound_type_from_dwarf(struct drgn_debug_info *dbinfo,
 			goto err;
 	}
 
-	err = drgn_compound_type_create(&builder, tag, size, lang, ret);
+	err = drgn_compound_type_create(&builder, tag, size, lang, true, ret);
 	if (err)
 		goto err;
 	return NULL;

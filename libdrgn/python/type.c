@@ -308,6 +308,46 @@ static PyObject *DrgnType_get_is_variadic(DrgnType *self)
 	return PyBool_FromLong(drgn_type_is_variadic(self->type));
 }
 
+static PyObject *DrgnType_get_template_parameters(DrgnType *self)
+{
+	PyObject *template_obj;
+	struct drgn_template_parameter *templates;
+	size_t num_templates, i;
+
+	templates = drgn_type_template_parameters(self->type);
+	num_templates = drgn_type_num_template_parameters(self->type);
+	template_obj = PyTuple_New(num_templates);
+	if (!template_obj)
+		return NULL;
+
+	for (i = 0; i < num_templates; i++) {
+		struct drgn_template_parameter *template = &templates[i];
+		TypeTemplateParameter *item;
+
+		item = (TypeTemplateParameter *)TypeTemplateParameter_type.tp_alloc(
+			&TypeTemplateParameter_type, 0);
+		if (!item)
+			goto err;
+		PyTuple_SET_ITEM(template_obj, i, (PyObject *)item);
+		Py_INCREF(self);
+		item->lazy_parameter.state = DRGNPY_LAZY_PARAMETER_UNEVALUATED;
+		item->lazy_parameter.lazy_parameter = &template->parameter;
+		if (template->name) {
+			item->name = PyUnicode_FromString(template->name);
+			if (!item->name)
+				goto err;
+		} else {
+			Py_INCREF(Py_None);
+			item->name = Py_None;
+		}
+	}
+	return template_obj;
+
+err:
+	Py_DECREF(template_obj);
+	return NULL;
+}
+
 struct DrgnType_Attr {
 	_Py_Identifier id;
 	PyObject *(*getter)(DrgnType *);
@@ -332,6 +372,7 @@ DrgnType_ATTR(members);
 DrgnType_ATTR(enumerators);
 DrgnType_ATTR(parameters);
 DrgnType_ATTR(is_variadic);
+DrgnType_ATTR(template_parameters);
 
 static PyObject *DrgnType_getter(DrgnType *self, struct DrgnType_Attr *attr)
 {
@@ -390,6 +431,8 @@ static PyGetSetDef DrgnType_getset[] = {
 	 &DrgnType_attr_parameters},
 	{"is_variadic", (getter)DrgnType_getter, NULL,
 	 drgn_Type_is_variadic_DOC, &DrgnType_attr_is_variadic},
+	{"template_parameters", (getter)DrgnType_getter, NULL, drgn_Type_template_parameters_DOC,
+	 &DrgnType_attr_template_parameters},
 	{},
 };
 
@@ -568,6 +611,10 @@ static PyObject *DrgnType_repr(DrgnType *self)
 	if (append_member(parts, self, &first, parameters) == -1)
 		goto out_repr_leave;
 	if (append_member(parts, self, &first, is_variadic) == -1)
+		goto out_repr_leave;
+	if (drgn_type_has_template_parameters(self->type) &&
+	    drgn_type_num_template_parameters(self->type) > 0 &&
+	    append_member(parts, self, &first, template_parameters) == -1)
 		goto out_repr_leave;
 	if (self->qualifiers) {
 		PyObject *obj;
@@ -1052,6 +1099,123 @@ PyTypeObject TypeMember_type = {
 	.tp_new = (newfunc)TypeMember_new,
 };
 
+static TypeTemplateParameter *TypeTemplateParameter_new(PyTypeObject *subtype, PyObject *args,
+				  PyObject *kwds)
+{
+	static char *keywords[] = {
+		"type", "name", NULL
+	};
+	PyObject *type_arg, *name = Py_None;
+	int type_state;
+	TypeTemplateParameter *template;
+
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|O:TypeTemplateParameter",
+					 keywords, &type_arg, &name))
+		return NULL;
+
+	if (PyCallable_Check(type_arg)) {
+		type_state = DRGNPY_LAZY_PARAMETER_CALLABLE;
+	} else if (PyObject_TypeCheck(type_arg, &DrgnType_type)) {
+		type_state = DRGNPY_LAZY_PARAMETER_EVALUATED;
+	} else {
+		PyErr_SetString(PyExc_TypeError,
+				"TypeTemplateParameter type must be type or callable returning Type");
+		return NULL;
+	}
+
+	if (name != Py_None && !PyUnicode_Check(name)) {
+		PyErr_SetString(PyExc_TypeError,
+				"TypeTemplateParameter name must be str or None");
+		return NULL;
+	}
+
+	template = (TypeTemplateParameter *)subtype->tp_alloc(subtype, 0);
+	if (!template)
+		return NULL;
+
+
+	template->lazy_parameter.state = type_state;
+	Py_INCREF(type_arg);
+	template->lazy_parameter.obj = type_arg;
+	Py_INCREF(name);
+	template->name = name;
+	return template;
+}
+
+static void TypeTemplateParameter_dealloc(TypeTemplateParameter *self)
+{
+	Py_XDECREF(self->name);
+	LazyParameter_dealloc((LazyParameter *)self);
+}
+
+static PyObject *TypeTemplateParameter_repr(TypeTemplateParameter *self)
+{
+	DrgnType *type;
+
+	type = LazyParameter_get_borrowed((LazyParameter *)self);
+	if (!type)
+		return NULL;
+	return PyUnicode_FromFormat("TypeTemplateParameter(type=%R, name=%R)", type, self->name);
+}
+
+static PyObject *TypeTemplateParameter_richcompare(TypeTemplateParameter *self, TypeTemplateParameter *other,
+					int op)
+{
+	DrgnType *self_type, *other_type;
+	PyObject *self_key, *other_key, *ret;
+
+	if ((op != Py_EQ && op != Py_NE) ||
+	    !PyObject_TypeCheck((PyObject *)other, &TypeTemplateParameter_type))
+		Py_RETURN_NOTIMPLEMENTED;
+
+	self_type = LazyParameter_get_borrowed((LazyParameter *)self);
+	if (!self_type)
+		return NULL;
+	other_type = LazyParameter_get_borrowed((LazyParameter *)other);
+	if (!other_type)
+		return NULL;
+
+	self_key = Py_BuildValue("OO", self_type, self->name);
+	if (!self_key)
+		return NULL;
+
+	other_key = Py_BuildValue("OO", other_type, other->name);
+	if (!other_key) {
+		Py_DECREF(self_key);
+		return NULL;
+	}
+
+	ret = PyObject_RichCompare(self_key, other_key, op);
+	Py_DECREF(other_key);
+	Py_DECREF(self_key);
+	return ret;
+}
+
+static PyMemberDef TypeTemplateParameter_members[] = {
+	{"name", T_OBJECT, offsetof(TypeTemplateParameter, name), READONLY,
+	 drgn_TypeTemplateParameter_name_DOC},
+	{},
+};
+
+static PyGetSetDef TypeTemplateParameter_getset[] = {
+	{"type", (getter)LazyParameter_get, NULL, drgn_TypeTemplateParameter_type_DOC, NULL},
+	{},
+};
+
+PyTypeObject TypeTemplateParameter_type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "_drgn.TypeTemplateParameter",
+	.tp_basicsize = sizeof(TypeTemplateParameter),
+	.tp_dealloc = (destructor)TypeTemplateParameter_dealloc,
+	.tp_repr = (reprfunc)TypeTemplateParameter_repr,
+	.tp_flags = Py_TPFLAGS_DEFAULT,
+	.tp_doc = drgn_TypeTemplateParameter_DOC,
+	.tp_richcompare = (richcmpfunc)TypeTemplateParameter_richcompare,
+	.tp_members = TypeTemplateParameter_members,
+	.tp_getset = TypeTemplateParameter_getset,
+	.tp_new = (newfunc)TypeTemplateParameter_new,
+};
+
 static TypeParameter *TypeParameter_new(PyTypeObject *subtype, PyObject *args,
 					PyObject *kwds)
 {
@@ -1497,23 +1661,61 @@ static int unpack_member(struct drgn_compound_type_builder *builder,
 	return 0;
 }
 
-#define compound_type_arg_format "O|O&O$O&O&"
+static int unpack_template(struct drgn_program *prog,
+			   struct drgn_template_parameter_vector *templates,
+			   PyObject *item, bool *can_cache)
+{
+	const char *name;
+	struct drgn_lazy_parameter template_parameter;
+
+	if (!PyObject_TypeCheck((PyObject *)item, &TypeTemplateParameter_type)) {
+		PyErr_SetString(PyExc_TypeError, "template must be TypeTemplateParameter");
+		return -1;
+	}
+
+	TypeTemplateParameter *template = (TypeTemplateParameter *)item;
+
+	if (template->name == Py_None) {
+		name = NULL;
+	} else {
+		name = PyUnicode_AsUTF8(template->name);
+		if (!name)
+			return -1;
+	}
+
+	if (lazy_parameter_from_py(&template_parameter, (LazyParameter *)template,
+				   prog, can_cache) == -1)
+		return -1;
+	struct drgn_error *err =
+		drgn_type_builder_add_template_parameter(
+			prog, templates, template_parameter, name);
+	if (err) {
+		drgn_lazy_parameter_deinit(&template_parameter);
+		set_drgn_error(err);
+		return -1;
+	}
+	return 0;
+}
+
+#define compound_type_arg_format "O|O&OO$O&O&"
 
 static DrgnType *Program_compound_type(Program *self, PyObject *args,
 				       PyObject *kwds, const char *arg_format,
 				       enum drgn_type_kind kind)
 {
 	static char *keywords[] = {
-		"tag", "size", "members", "qualifiers", "language", NULL
+		"tag", "size", "members", "template_parameters", "qualifiers", "language", NULL
 	};
 	PyObject *tag_obj;
 	struct index_arg size = { .allow_none = true, .is_none = true };
 	PyObject *members_obj = Py_None;
+	PyObject *templates_obj = Py_None;
 	enum drgn_qualifiers qualifiers = 0;
 	const struct drgn_language *language = NULL;
 	if (!PyArg_ParseTupleAndKeywords(args, kwds, arg_format, keywords,
 					 &tag_obj, index_converter, &size,
-					 &members_obj, qualifiers_converter,
+					 &members_obj, &templates_obj,
+					 qualifiers_converter,
 					 &qualifiers, language_converter,
 					 &language))
 		return NULL;
@@ -1532,47 +1734,73 @@ static DrgnType *Program_compound_type(Program *self, PyObject *args,
 		return NULL;
 	}
 
-	PyObject *cached_members;
+	size_t num_templates;
+	PyObject *cached_members = NULL;
+	PyObject *cached_templates = NULL;
 	bool can_cache_members = true;
+	bool can_cache_templates = true;
 	struct drgn_qualified_type qualified_type;
-	struct drgn_error *err;
+	struct drgn_error *err = NULL;
+	struct drgn_compound_type_builder builder;
+	drgn_compound_type_builder_init(&builder, &self->prog, kind);
+
+	if (templates_obj != Py_None) {
+		size_t i;
+		if (!PySequence_Check(templates_obj)) {
+			PyErr_SetString(PyExc_TypeError,
+					"templates must be sequence or None");
+			goto err_builder;
+		}
+		cached_templates = PySequence_Tuple(templates_obj);
+		if (!cached_templates)
+			goto err_builder;
+		num_templates = PyTuple_GET_SIZE(cached_templates);
+
+		for (i = 0; i < num_templates; i++) {
+			if (unpack_template(builder.prog, &builder.templates,
+					    PyTuple_GET_ITEM(cached_templates, i), &can_cache_templates) == -1)
+				goto err_builder;
+		}
+	} else {
+		num_templates = 0;
+		cached_templates = NULL;
+	}
+
 	if (members_obj == Py_None) {
 		if (!size.is_none) {
 			PyErr_Format(PyExc_ValueError,
 				     "incomplete %s type must not have size",
 				     drgn_type_kind_spelling[kind]);
-			return NULL;
+			goto err_builder;
 		}
 
 		if (!Program_hold_reserve(self, tag_obj != Py_None))
-			return NULL;
+			goto err_builder;
 
-		err = drgn_incomplete_compound_type_create(&self->prog, kind,
-							   tag, language,
-							   &qualified_type.type);
+		err = drgn_compound_type_create(&builder,
+						tag, 0, language, false,
+						&qualified_type.type);
 		if (err)
-			return set_drgn_error(err);
+			goto err_builder;
 
 		cached_members = NULL;
 	} else {
 		if (size.is_none) {
 			PyErr_Format(PyExc_ValueError, "%s type must have size",
 				     drgn_type_kind_spelling[kind]);
-			return NULL;
+			goto err_builder;
 		}
 
 		if (!PySequence_Check(members_obj)) {
 			PyErr_SetString(PyExc_TypeError,
 					"members must be sequence or None");
-			return NULL;
+			goto err_builder;
 		}
 		cached_members = PySequence_Tuple(members_obj);
 		if (!cached_members)
 			return NULL;
 		size_t num_members = PyTuple_GET_SIZE(cached_members);
 
-		struct drgn_compound_type_builder builder;
-		drgn_compound_type_builder_init(&builder, &self->prog, kind);
 		for (size_t i = 0; i < num_members; i++) {
 			if (unpack_member(&builder,
 					  PyTuple_GET_ITEM(cached_members, i),
@@ -1584,12 +1812,10 @@ static DrgnType *Program_compound_type(Program *self, PyObject *args,
 			goto err_builder;
 
 		err = drgn_compound_type_create(&builder, tag, size.uvalue,
-						language, &qualified_type.type);
+						language, true, &qualified_type.type);
 		if (err) {
 			set_drgn_error(err);
-err_builder:
-			drgn_compound_type_builder_deinit(&builder);
-			goto err_members;
+			goto err_builder;
 		}
 
 		Program_hold_object(self, cached_members);
@@ -1608,16 +1834,27 @@ err_builder:
 	    (can_cache_members &&
 	     _PyDict_SetItemId(type_obj->attr_cache, &DrgnType_attr_members.id,
 			       cached_members ?
-			       cached_members : Py_None) == -1))
+			       cached_members : Py_None) == -1) ||
+	    (can_cache_templates &&
+	     _PyDict_SetItemId(type_obj->attr_cache, &DrgnType_attr_template_parameters.id,
+			       cached_templates ?
+			       cached_templates : PyTuple_New(0))))
 		goto err_type;
 	Py_XDECREF(cached_members);
+	Py_XDECREF(cached_templates);
 
 	return type_obj;
 
+err_builder:
+	drgn_compound_type_builder_deinit(&builder);
+	goto err_members;
 err_type:
 	Py_DECREF(type_obj);
 err_members:
-	Py_XDECREF(cached_members);
+	if (cached_members)
+		Py_XDECREF(cached_members);
+	if (cached_templates)
+		Py_XDECREF(cached_templates);
 	return NULL;
 }
 

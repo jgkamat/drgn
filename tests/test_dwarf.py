@@ -16,6 +16,7 @@ from drgn import (
     TypeEnumerator,
     TypeMember,
     TypeParameter,
+    TypeTemplateParameter,
 )
 from tests import DEFAULT_LANGUAGE, TestCase
 from tests.dwarf import DW_AT, DW_ATE, DW_FORM, DW_LANG, DW_TAG
@@ -3124,6 +3125,133 @@ class TestTypes(TestCase):
             prog.type("TEST").type,
             prog.int_type("int", 4, True, language=DEFAULT_LANGUAGE),
         )
+
+    def test_struct_template(self):
+        prog = dwarf_program(
+            test_type_dies(
+                (
+                    DwarfDie(
+                        DW_TAG.structure_type,
+                        [
+                            DwarfAttrib(DW_AT.name, DW_FORM.string, "point"),
+                            DwarfAttrib(DW_AT.byte_size, DW_FORM.data1, 8),
+                        ],
+                        [
+                            DwarfDie(
+                                DW_TAG.member,
+                                [
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "x"),
+                                    DwarfAttrib(
+                                        DW_AT.data_member_location, DW_FORM.data1, 0
+                                    ),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ],
+                            ),
+                            DwarfDie(
+                                DW_TAG.member,
+                                [
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "y"),
+                                    DwarfAttrib(
+                                        DW_AT.data_member_location, DW_FORM.data1, 4
+                                    ),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ],
+                            ),
+                            DwarfDie(
+                                DW_TAG.template_type_parameter,
+                                [
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "T"),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ],
+                            ),
+                            DwarfDie(
+                                DW_TAG.template_type_parameter,
+                                [
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "U"),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ],
+                            ),
+                        ],
+                    ),
+                    int_die,
+                )
+            )
+        )
+        itype = prog.int_type("int", 4, True)
+        stype = prog.struct_type(
+            "point",
+            8,
+            (TypeMember(itype, "x", 0), TypeMember(itype, "y", 32)),
+            template_parameters=(
+                TypeTemplateParameter(itype, "T"),
+                TypeTemplateParameter(itype, "U"),
+            ),
+        )
+        self.assertEqual(prog.type("TEST").type, stype)
+
+    def test_struct_template_incomplete(self):
+        prog = dwarf_program(
+            test_type_dies(
+                (
+                    DwarfDie(
+                        DW_TAG.structure_type,
+                        [
+                            DwarfAttrib(DW_AT.name, DW_FORM.string, "point"),
+                            DwarfAttrib(DW_AT.byte_size, DW_FORM.data1, 8),
+                            DwarfAttrib(DW_AT.declaration, DW_FORM.flag_present, True),
+                        ],
+                        [
+                            DwarfDie(
+                                DW_TAG.member,
+                                [
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "x"),
+                                    DwarfAttrib(
+                                        DW_AT.data_member_location, DW_FORM.data1, 0
+                                    ),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ],
+                            ),
+                            DwarfDie(
+                                DW_TAG.member,
+                                [
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "y"),
+                                    DwarfAttrib(
+                                        DW_AT.data_member_location, DW_FORM.data1, 4
+                                    ),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ],
+                            ),
+                            DwarfDie(
+                                DW_TAG.template_type_parameter,
+                                [
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "T"),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ],
+                            ),
+                            DwarfDie(
+                                DW_TAG.template_type_parameter,
+                                [
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "U"),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ],
+                            ),
+                        ],
+                    ),
+                    int_die,
+                )
+            )
+        )
+
+        itype = prog.int_type("int", 4, True)
+        stype = prog.struct_type(
+            "point",
+            template_parameters=(
+                TypeTemplateParameter(itype, "T"),
+                TypeTemplateParameter(itype, "U"),
+            ),
+        )
+
+        self.assertEqual(prog.type("TEST").type, stype)
 
 
 class TestObjects(TestCase):
