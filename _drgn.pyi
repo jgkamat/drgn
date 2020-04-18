@@ -706,6 +706,7 @@ class Program:
         type: Type,
         parameters: Sequence[TypeParameter],
         is_variadic: bool = False,
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = None,
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -1522,7 +1523,7 @@ class Type:
     """
     List of template parameters of this type.
 
-    This is valid for structures, unions, and classes.
+    This is valid for structures, unions, classes, and functions.
     """
     def type_name(self) -> str:
         """Get a descriptive full name of this type."""

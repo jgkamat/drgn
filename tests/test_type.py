@@ -1177,7 +1177,7 @@ class TestType(MockProgramTestCase):
 
         self.assertEqual(
             repr(t),
-            "prog.function_type(type=prog.void_type(), parameters=(TypeParameter(type=prog.int_type(name='int', size=4, is_signed=True), name='n'),), is_variadic=False)",
+            "prog.function_type(type=prog.void_type(), parameters=(TypeParameter(type=prog.int_type(name='int', size=4, is_signed=True), name='n'),), is_variadic=False, template_parameters=())",
         )
         self.assertRaises(TypeError, sizeof, t)
 

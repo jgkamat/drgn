@@ -2225,18 +2225,20 @@ static int unpack_parameter(struct drgn_function_type_builder *builder,
 DrgnType *Program_function_type(Program *self, PyObject *args, PyObject *kwds)
 {
 	static char *keywords[] = {
-		"type", "parameters", "is_variadic", "qualifiers", "language",
+		"type", "parameters", "is_variadic", "template_parameters",
+		"qualifiers", "language",
 		NULL,
 	};
 	DrgnType *return_type_obj;
 	PyObject *parameters_obj;
+	PyObject *templates_obj = Py_None;
 	int is_variadic = 0;
 	enum drgn_qualifiers qualifiers = 0;
 	const struct drgn_language *language = NULL;
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O|p$O&O&:function_type",
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!O|pO$O&O&:function_type",
 					 keywords, &DrgnType_type,
 					 &return_type_obj, &parameters_obj,
-					 &is_variadic, qualifiers_converter,
+					 &is_variadic, &templates_obj, qualifiers_converter,
 					 &qualifiers, language_converter,
 					 &language))
 		return NULL;
@@ -2251,6 +2253,8 @@ DrgnType *Program_function_type(Program *self, PyObject *args, PyObject *kwds)
 		return NULL;
 	size_t num_parameters = PyTuple_GET_SIZE(cached_parameters);
 	bool can_cache_parameters = true;
+	bool can_cache_templates = true;
+	size_t num_templates;
 
 	struct drgn_function_type_builder builder;
 	drgn_function_type_builder_init(&builder, &self->prog);
@@ -2263,6 +2267,27 @@ DrgnType *Program_function_type(Program *self, PyObject *args, PyObject *kwds)
 
 	if (!Program_hold_reserve(self, 1))
 		goto err_builder;
+
+	if (templates_obj != Py_None) {
+		if (!PySequence_Check(templates_obj)) {
+			PyErr_SetString(PyExc_TypeError,
+					"templates must be sequence or None");
+			goto err_builder;
+		}
+		PyObject *cached_templates = PySequence_Tuple(templates_obj);
+		if (!cached_templates)
+			goto err_builder;
+
+		num_templates = PyTuple_GET_SIZE(cached_templates);
+		for (size_t i = 0; i < num_templates; i++) {
+			if (unpack_template(builder.prog, &builder.templates,
+					    PyTuple_GET_ITEM(cached_templates, i),
+					    &can_cache_templates) == -1)
+				goto err_builder;
+		}
+	} else {
+		num_templates = 0;
+	}
 
 	struct drgn_qualified_type qualified_type;
 	struct drgn_error *err = drgn_function_type_create(&builder,

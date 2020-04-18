@@ -3401,6 +3401,45 @@ class TestObjects(TestCase):
             LookupError, "could not find address", prog.object, "abort"
         )
 
+    def test_function_templates(self):
+        # T foo(char)
+        # foo<int>
+        prog = dwarf_program(
+            test_type_dies(
+                (
+                    DwarfDie(
+                        DW_TAG.subroutine_type,
+                        [DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1)],
+                        [
+                            DwarfDie(
+                                DW_TAG.formal_parameter,
+                                [DwarfAttrib(DW_AT.type, DW_FORM.ref4, 2)],
+                            ),
+                            DwarfDie(
+                                DW_TAG.template_type_parameter,
+                                [
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "T"),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ],
+                            ),
+                        ],
+                    ),
+                    int_die,
+                    char_die,
+                )
+            )
+        )
+
+        ftype = prog.function_type(
+            prog.int_type("int", 4, True),
+            (TypeParameter(prog.int_type("char", 1, True)),),
+            False,
+            template_parameters=(
+                TypeTemplateParameter(prog.int_type("int", 4, True), "T"),
+            ),
+        )
+        self.assertEqual(prog.type("TEST").type, ftype)
+
     def test_variable(self):
         prog = dwarf_program(
             test_type_dies(

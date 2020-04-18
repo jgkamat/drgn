@@ -2114,6 +2114,10 @@ drgn_function_type_from_dwarf(struct drgn_debug_info *dbinfo, Dwarf_Die *die,
 			}
 			is_variadic = true;
 			break;
+		case DW_TAG_template_type_parameter:
+			err = parse_template(dbinfo, &child, builder.prog, &builder.templates);
+			if (err)
+				goto err;
 		default:
 			break;
 		}
