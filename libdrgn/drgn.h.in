@@ -676,13 +676,14 @@ static inline size_t drgn_type_num_members(struct drgn_type *type)
 
 /**
  * Get whether a kind of type has template parameters. This is true for structure, union,
- * and class types.
+ * class, and function types.
  */
 static inline bool drgn_type_kind_has_template_parameters(enum drgn_type_kind kind)
 {
 	return (kind == DRGN_TYPE_STRUCT ||
 		kind == DRGN_TYPE_UNION ||
-		kind == DRGN_TYPE_CLASS);
+		kind == DRGN_TYPE_CLASS ||
+		kind == DRGN_TYPE_FUNCTION);
 }
 /**
  * Get whether a type has template parameters.

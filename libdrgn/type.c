@@ -759,6 +759,7 @@ void drgn_function_type_builder_init(struct drgn_function_type_builder *builder,
 {
 	builder->prog = prog;
 	drgn_type_parameter_vector_init(&builder->parameters);
+	drgn_template_parameter_vector_init(&builder->templates);
 }
 
 void
@@ -767,6 +768,7 @@ drgn_function_type_builder_deinit(struct drgn_function_type_builder *builder)
 	for (size_t i = 0; i < builder->parameters.size; i++)
 		drgn_lazy_parameter_deinit(&builder->parameters.data[i].type);
 	drgn_type_parameter_vector_deinit(&builder->parameters);
+	drgn_template_parameter_vector_deinit(&builder->templates);
 }
 
 struct drgn_error *
@@ -784,6 +786,24 @@ drgn_function_type_builder_add_parameter(struct drgn_function_type_builder *buil
 		return &drgn_enomem;
 	parameter->type = type;
 	parameter->name = name;
+	return NULL;
+}
+
+struct drgn_error *
+drgn_function_type_builder_add_template_parameter(struct drgn_function_type_builder *builder,
+						  struct drgn_lazy_parameter parameter,
+						  const char *name)
+{
+	struct drgn_error *err = drgn_lazy_parameter_check_prog(&parameter,
+								builder->prog);
+	if (err)
+		return err;
+	struct drgn_template_parameter *template =
+		drgn_template_parameter_vector_append_entry(&builder->templates);
+	if (!template)
+		return &drgn_enomem;
+	template->parameter = parameter;
+	template->name = name;
 	return NULL;
 }
 
@@ -820,6 +840,8 @@ drgn_function_type_create(struct drgn_function_type_builder *builder,
 	type->_private.language =
 		lang ? lang : drgn_program_language(builder->prog);
 	*ret = type;
+	type->_private.template_parameters = builder->templates.data;
+	type->_private.num_template_parameters = builder->templates.size;
 	return NULL;
 }
 

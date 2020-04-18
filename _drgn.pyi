@@ -707,6 +707,7 @@ class Program:
         type: Type,
         parameters: Sequence[TypeParameter],
         is_variadic: bool = False,
+        template_parameters: Optional[Sequence[TypeTemplateParameter]] = (),
         *,
         qualifiers: Qualifiers = Qualifiers.NONE,
         language: Optional[Language] = None,
@@ -717,6 +718,7 @@ class Program:
         :param type: The return type (:attr:`Type.type`)
         :param parameters: :attr:`Type.parameters`
         :param is_variadic: :attr:`Type.is_variadic`
+        :param template_parameters: :attr:`Type.template_parameters`
         :param qualifiers: :attr:`Type.qualifiers`
         :param lang: :attr:`Type.language`
         """
@@ -1523,7 +1525,7 @@ class Type:
     """
     List of template parameters of this type.
 
-    This is valid for structures, unions, and classes.
+    This is valid for structures, unions, classes, and functions.
     """
     def type_name(self) -> str:
         """Get a descriptive full name of this type."""

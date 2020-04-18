@@ -462,6 +462,7 @@ DEFINE_VECTOR_TYPE(drgn_type_parameter_vector, struct drgn_type_parameter)
 struct drgn_function_type_builder {
 	struct drgn_program *prog;
 	struct drgn_type_parameter_vector parameters;
+	struct drgn_template_parameter_vector templates;
 };
 
 /** Initialize a @ref drgn_function_type_builder. */
@@ -485,6 +486,16 @@ struct drgn_error *
 drgn_function_type_builder_add_parameter(struct drgn_function_type_builder *builder,
 					 struct drgn_lazy_parameter type,
 					 const char *name);
+
+/**
+ * Add a @ref drgn_type_template_parameter to a @ref drgn_function_type_builder.
+ *
+ * On success, @p builder takes ownership of @p type.
+ */
+struct drgn_error *
+drgn_function_type_builder_add_template_parameter(struct drgn_function_type_builder *builder,
+						  struct drgn_lazy_parameter parameter,
+						  const char *name);
 
 /**
  * Create a function type.
