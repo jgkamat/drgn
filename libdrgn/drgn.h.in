@@ -2368,6 +2368,22 @@ struct drgn_error *drgn_object_sizeof(const struct drgn_object *obj,
 /** @} */
 
 /**
+ * @defgroup NameSpaces Namespaces
+ *
+ * C++ Namespaces
+ *
+ * @{
+ */
+
+struct drgn_namespace {
+	const char* name;
+	struct drgn_dwarf_index *dindex;
+	const char* die_ptr;
+};
+
+/** @} */
+
+/**
  * @defgroup Symbols Symbols
  *
  * Symbol table entries.

@@ -1403,6 +1403,7 @@ static struct drgn_error *read_abbrev_decl(const char **ptr, const char *end,
 	case DW_TAG_enumerator:
 	/* Functions. */
 	case DW_TAG_subprogram:
+	case DW_TAG_namespace:
 		should_index = true;
 		break;
 	default:
