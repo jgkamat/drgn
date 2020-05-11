@@ -645,13 +645,13 @@ static void drgn_program_set_language_from_main(struct drgn_program *prog,
 	struct drgn_dwarf_index_iterator it;
 	static const uint64_t tags[] = { DW_TAG_subprogram };
 
-	drgn_dwarf_index_iterator_init(&it, dindex, "main", strlen("main"),
+	drgn_dwarf_index_iterator_init(&it, &dindex->ns, "main", strlen("main"),
 				       tags, ARRAY_SIZE(tags));
 	for (;;) {
 		Dwarf_Die die;
 		const struct drgn_language *lang;
 
-		err = drgn_dwarf_index_iterator_next(&it, &die, NULL);
+		err = drgn_dwarf_index_iterator_next(&it, &die, NULL, NULL);
 		if (err == &drgn_stop) {
 			break;
 		} else if (err) {

@@ -220,6 +220,46 @@ struct drgn_dwarf_index_cu {
 
 DEFINE_VECTOR(drgn_dwarf_index_cu_vector, struct drgn_dwarf_index_cu)
 
+struct drgn_dwarf_index_pending_cu {
+	/*
+	 * Pointer to CU this Namespace belongs to.
+	 */
+	struct drgn_dwarf_index_cu *cu;
+	/* Pointer to namespace DIE where we want to start indexing. */
+	const char *ptr;
+};
+
+DEFINE_VECTOR(drgn_dwarf_index_pending_cu_vector, struct drgn_dwarf_index_pending_cu)
+
+/**
+ * Subset of a drgn_dwarf_index which needs to be changed per namespace.
+ */
+struct drgn_dwarf_index_namespace {
+	/**
+	 * Index shards.
+	 *
+	 * This is sharded to reduce lock contention.
+	 */
+	struct drgn_dwarf_index_shard shards[1 << DRGN_DWARF_INDEX_SHARD_BITS];
+	/**
+	 * Pointer back to the parent dwarf_index.
+	 */
+	struct drgn_dwarf_index* dindex;
+	/*
+	 * Vector of DIEs we have not indexed yet.
+	 */
+	struct drgn_dwarf_index_pending_cu_vector pending_cus;
+};
+
+/**
+ * Resolve a @ref drgn_dwarf_index_namespace's children to be able to access
+ * its contents lazily.
+ *
+ * @param[in] ns The namespace to resolve.
+ */
+struct drgn_error *drgn_dwarf_index_namespace_resolve(
+	struct drgn_dwarf_index_namespace *ns);
+
 /**
  * Fast index of DWARF debugging information.
  *
@@ -232,11 +272,9 @@ DEFINE_VECTOR(drgn_dwarf_index_cu_vector, struct drgn_dwarf_index_cu)
  */
 struct drgn_dwarf_index {
 	/**
-	 * Index shards.
-	 *
-	 * This is sharded to reduce lock contention.
+	 * Container of default, top-level shards for this index.
 	 */
-	struct drgn_dwarf_index_shard shards[1 << DRGN_DWARF_INDEX_SHARD_BITS];
+	struct drgn_dwarf_index_namespace ns;
 	/**
 	 * Map from address of DIE referenced by DW_AT_specification to DIE that
 	 * references it. This is used to resolve DIEs with DW_AT_declaration to
@@ -406,7 +444,7 @@ bool drgn_dwarf_index_is_indexed(struct drgn_dwarf_index *dindex,
  */
 struct drgn_dwarf_index_iterator {
 	/** @privatesection */
-	struct drgn_dwarf_index *dindex;
+	struct drgn_dwarf_index_namespace *ns;
 	const uint64_t *tags;
 	size_t num_tags;
 	size_t shard;
@@ -425,7 +463,7 @@ struct drgn_dwarf_index_iterator {
  * @param[in] num_tags Number of tags in @p tags, or zero to search for any tag.
  */
 void drgn_dwarf_index_iterator_init(struct drgn_dwarf_index_iterator *it,
-				    struct drgn_dwarf_index *dindex,
+				    struct drgn_dwarf_index_namespace *ns,
 				    const char *name, size_t name_len,
 				    const uint64_t *tags, size_t num_tags);
 
@@ -450,7 +488,9 @@ void drgn_dwarf_index_iterator_init(struct drgn_dwarf_index_iterator *it,
  */
 struct drgn_error *
 drgn_dwarf_index_iterator_next(struct drgn_dwarf_index_iterator *it,
-			       Dwarf_Die *die_ret, uint64_t *bias_ret);
+			       Dwarf_Die *die_ret, uint64_t *bias_ret,
+			       struct drgn_dwarf_index_namespace **drgn_die_ret);
+
 
 /** @} */
 

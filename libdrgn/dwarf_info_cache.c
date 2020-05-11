@@ -398,20 +398,20 @@ drgn_dwarf_info_cache_find_complete(struct drgn_dwarf_info_cache *dicache,
 	Dwarf_Die die;
 	struct drgn_qualified_type qualified_type;
 
-	drgn_dwarf_index_iterator_init(&it, &dicache->dindex, name,
+	drgn_dwarf_index_iterator_init(&it, &dicache->dindex.ns, name,
 				       strlen(name), &tag, 1);
 	/*
 	 * Find a matching DIE. Note that drgn_dwarf_index does not contain DIEs
 	 * with DW_AT_declaration, so this will always be a complete type.
 	 */
-	err = drgn_dwarf_index_iterator_next(&it, &die, NULL);
+	err = drgn_dwarf_index_iterator_next(&it, &die, NULL, NULL);
 	if (err)
 		return err;
 	/*
 	 * Look for another matching DIE. If there is one, then we can't be sure
 	 * which type this is, so leave it incomplete rather than guessing.
 	 */
-	err = drgn_dwarf_index_iterator_next(&it, &die, NULL);
+	err = drgn_dwarf_index_iterator_next(&it, &die, NULL, NULL);
 	if (!err)
 		return &drgn_stop;
 	else if (err->code != DRGN_ERROR_STOP)
@@ -1456,9 +1456,9 @@ struct drgn_error *drgn_dwarf_type_find(enum drgn_type_kind kind,
 		UNREACHABLE();
 	}
 
-	drgn_dwarf_index_iterator_init(&it, &dicache->dindex, name, name_len,
+	drgn_dwarf_index_iterator_init(&it, &dicache->dindex.ns, name, name_len,
 				       &tag, 1);
-	while (!(err = drgn_dwarf_index_iterator_next(&it, &die, NULL))) {
+	while (!(err = drgn_dwarf_index_iterator_next(&it, &die, NULL, NULL))) {
 		if (die_matches_filename(&die, filename)) {
 			err = drgn_type_from_dwarf(dicache, &die, ret);
 			if (err)
@@ -1620,9 +1620,10 @@ drgn_object_from_dwarf_variable(struct drgn_dwarf_info_cache *dicache,
 }
 
 struct drgn_error *
-drgn_dwarf_object_find(const char *name, size_t name_len, const char *filename,
-		       enum drgn_find_object_flags flags, void *arg,
-		       struct drgn_object *ret)
+drgn_dwarf_object_find_internal(const char *name, size_t name_len, const char *filename,
+				enum drgn_find_object_flags flags,
+				struct drgn_dwarf_index_namespace* ns,
+				void *arg, struct drgn_object *ret)
 {
 	struct drgn_error *err;
 	struct drgn_dwarf_info_cache *dicache = arg;
@@ -1632,6 +1633,9 @@ drgn_dwarf_object_find(const char *name, size_t name_len, const char *filename,
 	Dwarf_Die die;
 	uint64_t bias;
 
+	if (!ns)
+		ns = &dicache->dindex.ns;
+
 	num_tags = 0;
 	if (flags & DRGN_FIND_OBJECT_CONSTANT)
 		tags[num_tags++] = DW_TAG_enumerator;
@@ -1640,9 +1644,8 @@ drgn_dwarf_object_find(const char *name, size_t name_len, const char *filename,
 	if (flags & DRGN_FIND_OBJECT_VARIABLE)
 		tags[num_tags++] = DW_TAG_variable;
 
-	drgn_dwarf_index_iterator_init(&it, &dicache->dindex, name,
-				       strlen(name), tags, num_tags);
-	while (!(err = drgn_dwarf_index_iterator_next(&it, &die, &bias))) {
+	drgn_dwarf_index_iterator_init(&it, ns, name, strlen(name), tags, num_tags);
+	while (!(err = drgn_dwarf_index_iterator_next(&it, &die, &bias, NULL))) {
 		if (!die_matches_filename(&die, filename))
 			continue;
 		switch (dwarf_tag(&die)) {
@@ -1663,6 +1666,58 @@ drgn_dwarf_object_find(const char *name, size_t name_len, const char *filename,
 	if (err && err->code != DRGN_ERROR_STOP)
 		return err;
 	return &drgn_not_found;
+}
+
+struct drgn_error *
+drgn_dwarf_object_find_with_namespaces(const char *name, size_t name_len, const char *filename,
+				       enum drgn_find_object_flags flags,
+				       struct drgn_dwarf_index_namespace* ns,
+				       void *arg, struct drgn_object *ret) {
+	struct drgn_error *err;
+	struct drgn_dwarf_info_cache *dicache = arg;
+
+	if (!ns)
+		ns = &dicache->dindex.ns;
+
+	char* ns_ptr = strstr(name, "::");
+	if (ns_ptr) {
+		const int ns_len = ns_ptr - name;
+		const size_t ns_colon_len = ns_len + 2;
+		char ns_string[ns_len + 1];
+		struct drgn_dwarf_index_iterator it;
+		Dwarf_Die die;
+		uint64_t bias;
+		uint64_t ns_tag = DW_TAG_namespace;
+		struct drgn_dwarf_index_namespace *dindex_namespace;
+
+		snprintf(ns_string, ns_len + 1, "%s", name);
+
+		drgn_dwarf_index_iterator_init(&it, ns, ns_string, strlen(ns_string), &ns_tag, 1);
+		while (!(err = drgn_dwarf_index_iterator_next(&it, &die, &bias, &dindex_namespace))) {
+			if (!die_matches_filename(&die, filename))
+				continue;
+			if (dwarf_tag(&die) == DW_TAG_namespace) {
+				drgn_dwarf_index_namespace_resolve(dindex_namespace);
+				err = drgn_dwarf_object_find_with_namespaces(
+					&name[ns_colon_len], name_len, filename, flags, dindex_namespace, arg, ret);
+				// We could not find in this ns, maybe there is another one which matches, continue.
+				if (!err || err->code == DRGN_ERROR_STOP)
+					return err;
+			}
+		}
+		if (err && err->code != DRGN_ERROR_STOP)
+			return err;
+		// Fall-through to default implementation
+	}
+
+	return drgn_dwarf_object_find_internal(name, name_len, filename, flags, ns, arg, ret);
+}
+
+struct drgn_error *
+drgn_dwarf_object_find(const char *name, size_t name_len, const char *filename,
+		       enum drgn_find_object_flags flags, void *arg,
+		       struct drgn_object *ret) {
+	return drgn_dwarf_object_find_with_namespaces(name, name_len, filename, flags, NULL, arg, ret);
 }
 
 struct drgn_error *
