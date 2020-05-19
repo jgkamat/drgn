@@ -202,6 +202,8 @@ struct drgn_dwarf_index {
 	 * should not be freed.
 	 */
 	struct c_string_set names;
+
+	const Dwfl_Callbacks *callbacks;
 };
 
 /**
@@ -326,6 +328,11 @@ void drgn_dwarf_index_report_abort(struct drgn_dwarf_index *dindex);
 bool drgn_dwarf_index_is_indexed(struct drgn_dwarf_index *dindex,
 				 const char *name);
 
+struct drgn_dwarf_index_namespace {
+	// TODO should this be a drgn_dwarf_info_cache instead ?
+	struct drgn_dwarf_index subindex;
+};
+
 /**
  * Iterator over DWARF debugging information.
  *
@@ -378,7 +385,9 @@ void drgn_dwarf_index_iterator_init(struct drgn_dwarf_index_iterator *it,
  */
 struct drgn_error *
 drgn_dwarf_index_iterator_next(struct drgn_dwarf_index_iterator *it,
-			       Dwarf_Die *die_ret, uint64_t *bias_ret);
+			       Dwarf_Die *die_ret, uint64_t *bias_ret,
+			       struct drgn_dwarf_index_namespace **drgn_die_ret);
+
 
 /** @} */
 

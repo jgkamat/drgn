@@ -652,7 +652,7 @@ static void drgn_program_set_language_from_main(struct drgn_program *prog,
 		Dwarf_Die die;
 		const struct drgn_language *lang;
 
-		err = drgn_dwarf_index_iterator_next(&it, &die, NULL);
+		err = drgn_dwarf_index_iterator_next(&it, &die, NULL, NULL);
 		if (err == &drgn_stop) {
 			break;
 		} else if (err) {
