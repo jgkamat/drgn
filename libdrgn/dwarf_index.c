@@ -275,6 +275,12 @@ static inline const char *section_end(Elf_Data *data)
 	return section_ptr(data, data->d_size);
 }
 
+
+struct drgn_dwarf_index_namespace {
+	struct drgn_dwarf_index subindex;
+};
+
+
 /*
  * An indexed DIE.
  *
@@ -293,6 +299,8 @@ struct drgn_dwarf_index_die {
 	size_t next;
 	Dwfl_Module *module;
 	uint64_t offset;
+	/* If tag == DW_TAG_namespace */
+	struct drgn_dwarf_index_namespace *namespace;
 };
 
 /*
@@ -514,6 +522,7 @@ struct drgn_error *drgn_dwarf_index_init(struct drgn_dwarf_index *dindex,
 	char *max_errors;
 
 	dindex->dwfl = dwfl_begin(callbacks);
+	dindex->callbacks = callbacks;
 	if (!dindex->dwfl)
 		return drgn_error_libdwfl();
 	for (i = 0; i < ARRAY_SIZE(dindex->shards); i++) {
@@ -1813,13 +1822,15 @@ static bool append_die_entry(struct drgn_dwarf_index_shard *shard, uint64_t tag,
 	die->module = module;
 	die->offset = offset;
 	die->next = SIZE_MAX;
+
 	return true;
 }
 
 static struct drgn_error *index_die(struct drgn_dwarf_index *dindex,
 				    const char *name, uint64_t tag,
 				    uint64_t file_name_hash,
-				    Dwfl_Module *module, uint64_t offset)
+				    Dwfl_Module *module, uint64_t offset,
+				    struct drgn_dwarf_index_die **ret_die)
 {
 	struct drgn_error *err;
 	struct drgn_dwarf_index_die_map_entry entry = {
@@ -1839,6 +1850,7 @@ static struct drgn_error *index_die(struct drgn_dwarf_index *dindex,
 	omp_set_lock(&shard->lock);
 	it = drgn_dwarf_index_die_map_search_hashed(&shard->map, &entry.key,
 						    hp);
+
 	if (!it.entry) {
 		if (!append_die_entry(shard, tag, file_name_hash, module,
 				      offset)) {
@@ -1848,9 +1860,11 @@ static struct drgn_error *index_die(struct drgn_dwarf_index *dindex,
 		entry.value = shard->dies.size - 1;
 		if (drgn_dwarf_index_die_map_insert_searched(&shard->map,
 							     &entry, hp,
-							     NULL) == 1)
+							     NULL) == 1) {
+
+			*ret_die = &shard->dies.data[shard->dies.size - 1];
 			err = NULL;
-		else
+		} else
 			err = &drgn_enomem;
 		goto out;
 	}
@@ -1873,6 +1887,7 @@ static struct drgn_error *index_die(struct drgn_dwarf_index *dindex,
 		err = &drgn_enomem;
 		goto out;
 	}
+	*ret_die = &shard->dies.data[shard->dies.size - 1];
 	shard->dies.data[index].next = shard->dies.size - 1;
 	err = NULL;
 out:
@@ -2057,21 +2072,22 @@ skip:
 }
 
 static struct drgn_error *index_cu(struct drgn_dwarf_index *dindex,
-				   struct compilation_unit *cu)
+				   struct compilation_unit *cu,
+				   const char* ptr_override)
 {
 	struct drgn_error *err;
 	struct abbrev_table abbrev;
 	struct uint64_vector file_name_table;
 	Elf_Data *debug_abbrev = cu->sections[SECTION_DEBUG_ABBREV];
 	const char *debug_abbrev_end = section_end(debug_abbrev);
-	const char *ptr = &cu->ptr[cu->is_64_bit ? 23 : 11];
-	const char *end = &cu->ptr[(cu->is_64_bit ? 12 : 4) + cu->unit_length];
 	Elf_Data *debug_info = cu->sections[SECTION_DEBUG_INFO];
 	const char *debug_info_buffer = section_ptr(debug_info, 0);
 	Elf_Data *debug_str = cu->sections[SECTION_DEBUG_STR];
 	const char *debug_str_buffer = section_ptr(debug_str, 0);
 	const char *debug_str_end = section_end(debug_str);
-	unsigned int depth = 0;
+	const char *ptr = ptr_override ? ptr_override : &cu->ptr[cu->is_64_bit ? 23 : 11];
+	const char *end = &cu->ptr[(cu->is_64_bit ? 12 : 4) + cu->unit_length];
+	unsigned int depth = ptr_override ? 1 : 0;
 	uint64_t enum_die_offset = 0;
 
 	abbrev_table_init(&abbrev);
@@ -2081,6 +2097,22 @@ static struct drgn_error *index_cu(struct drgn_dwarf_index *dindex,
 						 cu->debug_abbrev_offset),
 				     debug_abbrev_end, cu, &abbrev)))
 		goto out;
+
+	// Since we start at DEPTH = 1 when ptr_override is used, we must load the file name tables from the cu
+	if (ptr_override) {
+		struct die die = {
+			.stmt_list = SIZE_MAX,
+		};
+		const char* cu_ptr = &cu->ptr[cu->is_64_bit ? 23 : 11];
+		err = read_die(cu, &abbrev, &cu_ptr, end, debug_str_buffer,
+			       debug_str_end, &die);
+		if (err)
+			goto out;
+		// Assume we are reading the top-level CU.
+		if (err = read_file_name_table(
+			    dindex, cu, die.stmt_list, &file_name_table))
+			goto out;
+	}
 
 	for (;;) {
 		struct die die = {
@@ -2103,6 +2135,7 @@ static struct drgn_error *index_cu(struct drgn_dwarf_index *dindex,
 		}
 
 		tag = die.flags & TAG_MASK;
+		// TODO FIXME this is not running due to us starting in the middle.
 		if (tag == DW_TAG_compile_unit || tag == DW_TAG_partial_unit) {
 			if (depth == 0 && die.stmt_list != SIZE_MAX &&
 			    (err = read_file_name_table(dindex, cu,
@@ -2139,6 +2172,7 @@ static struct drgn_error *index_cu(struct drgn_dwarf_index *dindex,
 			}
 
 			if (die.name) {
+				// printf("%s\n", die.name);
 				if (die.decl_file > file_name_table.size) {
 					err = drgn_error_format(DRGN_ERROR_OTHER,
 								"invalid DW_AT_decl_file %zu",
@@ -2149,10 +2183,37 @@ static struct drgn_error *index_cu(struct drgn_dwarf_index *dindex,
 					file_name_hash = file_name_table.data[die.decl_file - 1];
 				else
 					file_name_hash = 0;
+
+				struct drgn_dwarf_index_die *new_die = NULL;
 				if ((err = index_die(dindex, die.name, tag,
 						     file_name_hash, cu->module,
-						     die_offset)))
+						     die_offset, &new_die)))
 					goto out;
+
+				if (new_die != NULL && new_die->tag == DW_TAG_namespace) {
+					new_die->namespace = NULL;
+
+					// TODO don't always do this...
+					new_die->namespace = malloc(sizeof(struct drgn_dwarf_index_namespace));
+					drgn_dwarf_index_init(&new_die->namespace->subindex, dindex->callbacks);
+
+					printf("RECURSING INTO %s\n", die.name);
+					printf("%d\n", new_die->offset);
+
+					// Go down into children
+					const char* child_ptr = new_die->offset + debug_info_buffer;
+					// const char* child_ptr = ptr;
+					struct die child_die = {
+						.stmt_list = SIZE_MAX,
+					};
+					// child_ptr is right now at the namespace die, we need the child. So read a die
+					// to skip to the child.
+					read_die(cu, &abbrev, &child_ptr, end, debug_str_buffer, debug_str_end, &child_die);
+
+					index_cu(&new_die->namespace->subindex, cu, child_ptr);
+
+					printf("BACK!\n");
+				}
 			}
 		}
 
@@ -2245,7 +2306,7 @@ static struct drgn_error *index_cus(struct drgn_dwarf_index *dindex,
 		if (err)
 			continue;
 
-		cu_err = index_cu(dindex, &cus[i]);
+		cu_err = index_cu(dindex, &cus[i], 0);
 		if (cu_err) {
 			#pragma omp critical(drgn_index_cus)
 			if (err)

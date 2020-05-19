@@ -202,6 +202,8 @@ struct drgn_dwarf_index {
 	 * should not be freed.
 	 */
 	struct c_string_set names;
+
+	const Dwfl_Callbacks *callbacks;
 };
 
 /**
