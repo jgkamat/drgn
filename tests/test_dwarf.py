@@ -2176,6 +2176,90 @@ class TestObjects(ObjectTestCase):
         self.assertRaisesRegex(LookupError, "could not find", prog.object, "y")
 
 
+class TestScopes(unittest.TestCase):
+    def test_namespaces_single(self):
+        dies = [
+            int_die,
+            DwarfDie(
+                DW_TAG.namespace,
+                [DwarfAttrib(DW_AT.name, DW_FORM.string, "moho")],
+                [
+                    DwarfDie(
+                        DW_TAG.variable,
+                        [
+                            DwarfAttrib(DW_AT.name, DW_FORM.string, "target"),
+                            DwarfAttrib(DW_AT.type, DW_FORM.ref4, 0),
+                            DwarfAttrib(DW_AT.const_value, DW_FORM.data1, 123),
+                        ],
+                    )
+                ],
+            ),
+        ]
+        prog = dwarf_program(dies)
+
+        self.assertEqual(prog['moho::target'].type_, int_type("int", 4, True))
+        self.assertEqual(prog['moho::target'], 123)
+
+    def test_namespaces_gcc(self):
+        dies = [
+            int_die,
+            DwarfDie(
+                DW_TAG.namespace,
+                [DwarfAttrib(DW_AT.name, DW_FORM.string, "moho")],
+                [
+                    DwarfDie(
+                        DW_TAG.variable,
+                        [
+                            DwarfAttrib(DW_AT.name, DW_FORM.string, "target"),
+                            DwarfAttrib(DW_AT.type, DW_FORM.ref4, 0),
+                            DwarfAttrib(DW_AT.const_value, DW_FORM.data1, 123),
+                        ],
+                    )
+                ],
+            ),
+        ]
+        prog = dwarf_program(dies)
+
+        self.assertEqual(prog['moho::target'].type_, int_type("int", 4, True))
+        self.assertEqual(prog['moho::target'], 123)
+
+    def test_namespaces_nested(self):
+        dies = [
+            int_die,
+            DwarfDie(
+                DW_TAG.namespace,
+                [DwarfAttrib(DW_AT.name, DW_FORM.string, "moho")],
+                [
+                    DwarfDie(
+                        DW_TAG.namespace,
+                        [DwarfAttrib(DW_AT.name, DW_FORM.string, "eve")],
+                        [
+                            DwarfDie(
+                                DW_TAG.namespace,
+                                [DwarfAttrib(DW_AT.name, DW_FORM.string, "kerbin")],
+                                [
+                                    DwarfDie(
+                                        DW_TAG.variable,
+                                        [
+                                            DwarfAttrib(DW_AT.name, DW_FORM.string, "minmus"),
+                                            DwarfAttrib(DW_AT.type, DW_FORM.ref4, 0),
+                                            DwarfAttrib(DW_AT.const_value, DW_FORM.data1, 47),
+                                        ],
+                                    )
+                                ],
+                            )
+                        ]
+                    )
+                ]
+            ),
+        ]
+        prog = dwarf_program(dies)
+
+        self.assertEqual(prog['moho::eve::kerbin::minmus'].type_, int_type("int", 4, True))
+        self.assertEqual(prog['moho::eve::kerbin::minmus'], 47)
+
+
+
 class TestProgram(unittest.TestCase):
     def test_language(self):
         dies = (
