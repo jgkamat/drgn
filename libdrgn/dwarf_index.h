@@ -193,6 +193,33 @@ DEFINE_HASH_TABLE_TYPE(drgn_dwarf_module_table, struct drgn_dwarf_module *,
 
 DEFINE_HASH_SET_TYPE(c_string_set, const char *)
 
+struct drgn_dwarf_index_cu {
+	struct drgn_dwfl_module_userdata *userdata;
+	const char *ptr;
+	size_t unit_length;
+	uint64_t debug_abbrev_offset;
+	uint8_t version;
+	uint8_t address_size;
+	bool is_64_bit;
+	bool bswap;
+	/*
+	 * This is indexed on the DWARF abbreviation code minus one. It maps the
+	 * abbreviation code to an index in abbrev_insns where the instruction
+	 * stream for that code begins.
+	 *
+	 * Technically, abbreviation codes don't have to be sequential. In
+	 * practice, GCC and Clang seem to always generate sequential codes
+	 * starting at one, so we can get away with a flat array.
+	 */
+	uint32_t *abbrev_decls;
+	size_t num_abbrev_decls;
+	uint8_t *abbrev_insns;
+	uint64_t *file_name_hashes;
+	size_t num_file_names;
+};
+
+DEFINE_VECTOR(drgn_dwarf_index_cu_vector, struct drgn_dwarf_index_cu)
+
 /**
  * Fast index of DWARF debugging information.
  *
@@ -246,6 +273,7 @@ struct drgn_dwarf_index {
 	 * should not be freed.
 	 */
 	struct c_string_set names;
+	struct drgn_dwarf_index_cu_vector cus;
 };
 
 /**
