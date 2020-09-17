@@ -270,6 +270,12 @@ drgn_debug_info_find_object(const char *name, size_t name_len,
 			    enum drgn_find_object_flags flags, void *arg,
 			    struct drgn_object *ret);
 
+struct drgn_error *
+drgn_debug_info_find_object_internal(const char *name, size_t name_len, const char *filename,
+				     enum drgn_find_object_flags flags, void *arg,
+				     struct drgn_object *ret, Dwarf_Die *die_ret);
+
+
 struct drgn_error *open_elf_file(const char *path, int *fd_ret, Elf **elf_ret);
 
 struct drgn_error *find_elf_file(char **path_ret, int *fd_ret, Elf **elf_ret,
