@@ -2338,6 +2338,7 @@ drgn_type_from_dwarf_internal(struct drgn_debug_info *dbinfo,
 						   &ret->type);
 		break;
 	case DW_TAG_pointer_type:
+	case DW_TAG_reference_type:
 		err = drgn_pointer_type_from_dwarf(dbinfo, die, bias, lang,
 						   &ret->type);
 		break;
