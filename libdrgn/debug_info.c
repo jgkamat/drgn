@@ -1725,7 +1725,14 @@ drgn_compound_type_from_dwarf(struct drgn_debug_info *dbinfo,
 	Dwarf_Die member = {}, child;
 	int r = dwarf_child(die, &child);
 	while (r == 0) {
-		if ((!declaration && dwarf_tag(&child) == DW_TAG_member) ||
+		bool external;
+		if (dwarf_flag(&child, DW_AT_external, &external)) {
+			return drgn_error_format(DRGN_ERROR_OTHER,
+						 "%s has invalid DW_AT_external",
+						 dw_tag_str);
+		}
+
+		if ((!declaration && (dwarf_tag(&child) == DW_TAG_member) && !external) ||
 		    dwarf_tag(&child) == DW_TAG_subprogram) {
 			if (member.addr) {
 				err = parse_member(dbinfo, &member, bias,
