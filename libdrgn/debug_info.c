@@ -2617,10 +2617,10 @@ drgn_debug_info_find_object_in_type_die(struct drgn_dwarf_index_die *index_die,
 }
 
 struct drgn_error *
-drgn_debug_info_find_object(const char *name, size_t name_len,
-			    const char *filename,
-			    enum drgn_find_object_flags flags, void *arg,
-			    struct drgn_object *ret)
+drgn_debug_info_find_object_internal(const char *name, size_t name_len,
+				     const char *filename,
+				     enum drgn_find_object_flags flags, void *arg,
+				     struct drgn_object *ret, Dwarf_Die *ret_die)
 {
 	struct drgn_error *err;
 	struct drgn_debug_info *dbinfo = arg;
@@ -2651,6 +2651,13 @@ drgn_debug_info_find_object(const char *name, size_t name_len,
 		if (!index_die)
 			return &drgn_not_found;
 		if (index_die->tag != DW_TAG_namespace) {
+			Dwarf_Die die;
+			if (ret_die) {
+				uint64_t bias;
+				err = drgn_dwarf_index_get_die(index_die, ret_die, &bias);
+				if (err)
+					return err;
+			}
 			err = drgn_debug_info_find_object_in_type_die(index_die, dbinfo, colons + 2, ret);
 			if (err && err != &drgn_stop)
 				return err;
@@ -2686,6 +2693,11 @@ drgn_debug_info_find_object(const char *name, size_t name_len,
 			return err;
 		if (!die_matches_filename(&die, filename))
 			continue;
+		if (ret_die) {
+			err = drgn_dwarf_index_get_die(index_die, ret_die, &bias);
+			if (err)
+				return err;
+		}
 		switch (dwarf_tag(&die)) {
 		case DW_TAG_enumeration_type:
 			return drgn_object_from_dwarf_enumerator(dbinfo, &die,
@@ -2702,6 +2714,14 @@ drgn_debug_info_find_object(const char *name, size_t name_len,
 		}
 	}
 	return &drgn_not_found;
+}
+
+struct drgn_error *
+drgn_debug_info_find_object(const char *name, size_t name_len, const char *filename,
+			    enum drgn_find_object_flags flags, void *arg,
+			    struct drgn_object *ret) {
+	return drgn_debug_info_find_object_internal(
+		name, name_len, filename, flags, arg, ret, NULL);
 }
 
 struct drgn_error *drgn_debug_info_create(struct drgn_program *prog,

@@ -1199,3 +1199,24 @@ drgn_program_member_info(struct drgn_program *prog, struct drgn_type *type,
 	ret->bit_field_size = member->member->bit_field_size;
 	return NULL;
 }
+
+// TODO this is a major hack - it only works in some scenarios (eg: not on the kernel, only a direct substitute for
+// drgn_dwarf_object_find)
+LIBDRGN_PUBLIC struct drgn_error *
+drgn_program_find_object_die(struct drgn_program *prog, const char *name,
+			     const char *filename,
+			     enum drgn_find_object_flags flags,
+			     Dwarf_Die *dwarf_die_ret) {
+	struct drgn_error *err;
+	struct drgn_object obj;
+	drgn_object_init(&obj, prog);
+	struct drgn_debug_info *dbinfo;
+	err = drgn_program_get_dbinfo(prog, &dbinfo);
+	if (err)
+		return err;
+	err = drgn_debug_info_find_object_internal(
+		name, strlen(name), filename, flags, dbinfo,
+		&obj, dwarf_die_ret);
+	drgn_object_deinit(&obj);
+	return err;
+}
