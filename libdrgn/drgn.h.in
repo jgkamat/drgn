@@ -20,6 +20,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include <elfutils/libdw.h>
 
 /**
  * @mainpage
@@ -2567,5 +2568,11 @@ struct drgn_error *drgn_object_stack_trace(const struct drgn_object *obj,
 					   struct drgn_stack_trace **ret);
 
 /** @} */
+
+struct drgn_error *drgn_program_find_object_die(struct drgn_program *prog,
+						const char *name,
+						const char *filename,
+						enum drgn_find_object_flags flags,
+						Dwarf_Die *dwarf_die_ret);
 
 #endif /* DRGN_H */
