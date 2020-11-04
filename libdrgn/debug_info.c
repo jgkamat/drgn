@@ -1393,8 +1393,38 @@ drgn_base_type_from_dwarf(struct drgn_debug_info *dbinfo, Dwarf_Die *die,
 	}
 }
 
+static struct drgn_error *
+drgn_dig_namespace(const char **name, size_t *name_len,
+		   struct drgn_dwarf_index_namespace **ns) {
+	struct drgn_error *err;
+	if (*name_len <= 2 && memcmp(*name, "::", 2) == 0) {
+		/* Explicit global namespace. */
+		*name_len -= 2;
+		*name += 2;
+	}
+
+	const char *colons;
+	while ((colons = memmem(*name, *name_len, "::", 2))) {
+		struct drgn_dwarf_index_iterator it;
+		uint64_t tag = DW_TAG_namespace;
+		err = drgn_dwarf_index_iterator_init(&it, *ns, *name,
+						     colons - *name, &tag, 1);
+		if (err)
+			return err;
+		struct drgn_dwarf_index_die *index_die =
+			drgn_dwarf_index_iterator_next(&it);
+		if (!index_die)
+			// TODO should this be signalled?
+			break;
+		*ns = index_die->namespace;
+		*name_len -= colons + 2 - *name;
+		*name = colons + 2;
+	}
+	return NULL;
+}
+
 /*
- * DW_TAG_structure_type, DW_TAG_union_type, DW_TAG_class_type, and
+ * Dw_TAG_structure_type, DW_TAG_union_type, DW_TAG_class_type, and
  * DW_TAG_enumeration_type can be incomplete (i.e., have a DW_AT_declaration of
  * true). This tries to find the complete type. If it succeeds, it returns NULL.
  * If it can't find a complete type, it returns a DRGN_ERROR_STOP error.
@@ -1406,9 +1436,16 @@ drgn_debug_info_find_complete(struct drgn_debug_info *dbinfo, uint64_t tag,
 {
 	struct drgn_error *err;
 
+	size_t name_len = strlen(name);
+	struct drgn_dwarf_index_namespace *ns = &dbinfo->dindex.global;
+
+	// err = drgn_dig_namespace(&name, &name_len, &ns);
+	// if (err)
+	// 	return err;
+
 	struct drgn_dwarf_index_iterator it;
-	err = drgn_dwarf_index_iterator_init(&it, &dbinfo->dindex.global, name,
-					     strlen(name), &tag, 1);
+	err = drgn_dwarf_index_iterator_init(&it, ns, name,
+					     name_len, &tag, 1);
 	if (err)
 		return err;
 
