@@ -81,6 +81,7 @@ struct drgn_dwarf_index_cu {
 	uint8_t version;
 	uint8_t address_size;
 	bool is_64_bit;
+	bool is_type_unit;
 	/*
 	 * This is indexed on the DWARF abbreviation code minus one. It maps the
 	 * abbreviation code to an index in abbrev_insns where the instruction
@@ -584,6 +585,14 @@ static struct drgn_error *read_cu(struct drgn_dwarf_index_cu_buffer *buffer)
 					 &buffer->cu->address_size)))
 		return err;
 
+	/* Skip type_signature and type_offset if present
+	   to properly place buffer pos */
+	if (buffer->cu->is_type_unit) {
+		if ((err = binary_buffer_skip(&buffer->bb, buffer->cu->is_64_bit ? 16 : 12))) {
+			return err;
+		}
+	}
+
 	return read_abbrev_table(buffer->cu, debug_abbrev_offset);
 }
 
@@ -765,6 +774,16 @@ index_specification(struct drgn_dwarf_index *dindex, uintptr_t declaration,
 	return ret == -1 ? &drgn_enomem : NULL;
 }
 
+static size_t index_cu_header_offset(struct drgn_dwarf_index_cu *cu) {
+	size_t offset = cu->is_64_bit ? 23 : 11;
+	if (cu->is_type_unit) {
+		offset += 12;
+		if (cu->is_64_bit)
+			offset += 4;
+	}
+	return offset;
+}
+
 /*
  * First pass: read the file name tables and index DIEs with
  * DW_AT_specification. This recurses into namespaces.
@@ -775,7 +794,8 @@ index_cu_first_pass(struct drgn_dwarf_index *dindex,
 {
 	struct drgn_error *err;
 	struct drgn_dwarf_index_cu *cu = buffer->cu;
-	Elf_Data *debug_info = cu->module->scns[DRGN_SCN_DEBUG_INFO];
+	Elf_Data *debug_info = cu->module->scns[
+		cu->is_type_unit ? DRGN_SCN_DEBUG_TYPES : DRGN_SCN_DEBUG_INFO];
 	const char *debug_info_buffer = debug_info->d_buf;
 	unsigned int depth = 0;
 	for (;;) {
@@ -996,12 +1016,13 @@ skip:
 	return NULL;
 }
 
-void drgn_dwarf_index_read_module(struct drgn_dwarf_index_update_state *state,
-				  struct drgn_debug_info_module *module)
+static void drgn_dwarf_index_read_cus(struct drgn_dwarf_index_update_state *state,
+				      struct drgn_debug_info_module *module,
+				      enum drgn_debug_info_scn scn)
 {
 	struct drgn_error *err;
 	struct drgn_debug_info_buffer buffer;
-	drgn_debug_info_buffer_init(&buffer, module, DRGN_SCN_DEBUG_INFO);
+	drgn_debug_info_buffer_init(&buffer, module, scn);
 	while (binary_buffer_has_next(&buffer.bb)) {
 		const char *cu_buf = buffer.bb.pos;
 		uint32_t unit_length32;
@@ -1035,6 +1056,7 @@ void drgn_dwarf_index_read_module(struct drgn_dwarf_index_update_state *state,
 				.buf = cu_buf,
 				.len = cu_len,
 				.is_64_bit = is_64_bit,
+				.is_type_unit = scn == DRGN_SCN_DEBUG_TYPES,
 			};
 			struct drgn_dwarf_index_cu_buffer cu_buffer;
 			drgn_dwarf_index_cu_buffer_init(&cu_buffer, &cu);
@@ -1061,6 +1083,14 @@ cu_err:
 
 err:
 	drgn_dwarf_index_update_cancel(state, err);
+}
+
+void drgn_dwarf_index_read_module(struct drgn_dwarf_index_update_state *state,
+				  struct drgn_debug_info_module *module)
+{
+	drgn_dwarf_index_read_cus(state, module, DRGN_SCN_DEBUG_INFO);
+	if (module->scns[DRGN_SCN_DEBUG_TYPES])
+		drgn_dwarf_index_read_cus(state, module, DRGN_SCN_DEBUG_TYPES);
 }
 
 bool
@@ -1530,7 +1560,7 @@ drgn_dwarf_index_update_end(struct drgn_dwarf_index_update_state *state)
 		struct drgn_dwarf_index_cu *cu = &dindex->cus.data[i];
 		struct drgn_dwarf_index_cu_buffer buffer;
 		drgn_dwarf_index_cu_buffer_init(&buffer, cu);
-		buffer.bb.pos += cu->is_64_bit ? 23 : 11;
+		buffer.bb.pos += index_cu_header_offset(cu);
 		struct drgn_error *cu_err =
 			index_cu_second_pass(&dindex->global, &buffer);
 		if (cu_err)
@@ -1690,7 +1720,16 @@ struct drgn_error *drgn_dwarf_index_get_die(struct drgn_dwarf_index_die *die,
 	if (!dwarf)
 		return drgn_error_libdwfl();
 	uintptr_t start = (uintptr_t)die->module->scns[DRGN_SCN_DEBUG_INFO]->d_buf;
-	if (!dwarf_offdie(dwarf, die->addr - start, die_ret))
-		return drgn_error_libdw();
+	uint64_t size = die->module->scns[DRGN_SCN_DEBUG_INFO]->d_size;
+	if (die->addr >= start &&
+	    die->addr < start + size) {
+		if (!dwarf_offdie(dwarf, die->addr - start, die_ret))
+			return drgn_error_libdw();
+	} else {
+		start = (uintptr_t)die->module->scns[DRGN_SCN_DEBUG_TYPES]->d_buf;
+		/* Assume .debug_types */
+		if (!dwarf_offdie_types(dwarf, die->addr - start, die_ret))
+			return drgn_error_libdw();
+	}
 	return NULL;
 }

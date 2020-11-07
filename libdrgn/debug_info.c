@@ -62,6 +62,7 @@ static const char * const drgn_debug_scn_names[] = {
 	[DRGN_SCN_DEBUG_ABBREV] = ".debug_abbrev",
 	[DRGN_SCN_DEBUG_STR] = ".debug_str",
 	[DRGN_SCN_DEBUG_LINE] = ".debug_line",
+	[DRGN_SCN_DEBUG_TYPES] = ".debug_types",
 };
 
 
@@ -2448,8 +2449,17 @@ drgn_type_from_dwarf_internal(struct drgn_debug_info *dbinfo,
 			if (!dwarf)
 				return drgn_error_libdwfl();
 			uintptr_t start = (uintptr_t)module->scns[DRGN_SCN_DEBUG_INFO]->d_buf;
-			if (!dwarf_offdie(dwarf, die_addr - start, die))
-				return drgn_error_libdw();
+			uint64_t size = module->scns[DRGN_SCN_DEBUG_INFO]->d_size;
+			if (die_addr >= start &&
+			    die_addr < start + size) {
+				if (!dwarf_offdie(dwarf, die_addr - start, die))
+					return drgn_error_libdw();
+			} else {
+				start = (uintptr_t)module->scns[DRGN_SCN_DEBUG_TYPES]->d_buf;
+				/* Assume .debug_types */
+				if (!dwarf_offdie_types(dwarf, die_addr - start, die))
+					return drgn_error_libdw();
+			}
 		}
 	}
 
