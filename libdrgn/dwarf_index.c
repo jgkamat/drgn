@@ -75,6 +75,7 @@ DEFINE_VECTOR(uint64_vector, uint64_t)
 
 struct drgn_dwarf_index_cu {
 	struct drgn_debug_info_module *module;
+	const char *buffer_ptr;
 	const char *ptr;
 	const char *end;
 	uint8_t version;
@@ -588,6 +589,11 @@ static struct drgn_error *read_abbrev_table(struct drgn_dwarf_index_cu *cu,
 	return NULL;
 }
 
+static bool index_cu_is_type_unit(struct drgn_dwarf_index_cu *cu) {
+	return cu->module->debug_types &&
+		section_ptr(cu->module->debug_types, 0) == cu->buffer_ptr;
+}
+
 static struct drgn_error *read_cu(struct drgn_dwarf_index_cu *cu)
 {
 
@@ -800,6 +806,16 @@ index_specification(struct drgn_dwarf_index *dindex, uintptr_t declaration,
 	return ret == -1 ? &drgn_enomem : NULL;
 }
 
+static size_t index_cu_header_offset(struct drgn_dwarf_index_cu *cu) {
+	size_t offset = cu->is_64_bit ? 23 : 11;
+	if (index_cu_is_type_unit(cu)) {
+		offset += 12;
+		if (cu->is_64_bit)
+			offset += 4;
+	}
+	return offset;
+}
+
 /*
  * First pass: read the file name tables and index DIEs with
  * DW_AT_specification. This recurses into namespaces.
@@ -808,9 +824,8 @@ static struct drgn_error *index_cu_first_pass(struct drgn_dwarf_index *dindex,
 					      struct drgn_dwarf_index_cu *cu)
 {
 	struct drgn_error *err;
-	Elf_Data *debug_info = cu->module->debug_info;
-	const char *debug_info_buffer = section_ptr(debug_info, 0);
-	const char *ptr = &cu->ptr[cu->is_64_bit ? 23 : 11];
+	const char *debug_info_buffer = cu->buffer_ptr;
+	const char *ptr = &cu->ptr[index_cu_header_offset(cu)];
 	const char *end = cu->end;
 	unsigned int depth = 0;
 	for (;;) {
@@ -1009,33 +1024,35 @@ skip:
 	return NULL;
 }
 
-void drgn_dwarf_index_read_module(struct drgn_dwarf_index_update_state *state,
-				  struct drgn_debug_info_module *module)
+bool drgn_dwarf_index_read_cu(struct drgn_dwarf_index_update_state *state,
+			      struct drgn_debug_info_module *module,
+			      const char* ptr,
+			      const char* end)
 {
+	const char* buffer_ptr = ptr;
 	const bool bswap = module->bswap;
-	const char *ptr = section_ptr(module->debug_info, 0);
-	const char *end = section_end(module->debug_info);
 	while (ptr < end) {
 		const char *cu_ptr = ptr;
 		uint32_t tmp;
 		if (!mread_u32(&ptr, end, bswap, &tmp))
-			goto err;
+			return false;
 		bool is_64_bit = tmp == UINT32_C(0xffffffff);
 		size_t unit_length;
 		if (is_64_bit) {
 			if (!mread_u64_into_size_t(&ptr, end, bswap,
 						   &unit_length))
-				goto err;
+				return false;
 		} else {
 			unit_length = tmp;
 		}
 		if (!mread_skip(&ptr, end, unit_length))
-			goto err;
+			return false;
 
 		#pragma omp task
 		{
 			struct drgn_dwarf_index_cu cu = {
 				.module = module,
+				.buffer_ptr = buffer_ptr,
 				.ptr = cu_ptr,
 				.end = ptr,
 				.is_64_bit = is_64_bit,
@@ -1060,10 +1077,22 @@ cu_err:
 			}
 		}
 	}
-	return;
+	return true;
+}
 
-err:
-	drgn_dwarf_index_update_cancel(state, drgn_eof());
+void drgn_dwarf_index_read_module(struct drgn_dwarf_index_update_state *state,
+				  struct drgn_debug_info_module *module)
+{
+	const char *ptr = section_ptr(module->debug_info, 0);
+	const char *end = section_end(module->debug_info);
+	if (!drgn_dwarf_index_read_cu(state, module, ptr, end))
+		drgn_dwarf_index_update_cancel(state, drgn_eof());
+	if (module->debug_types) {
+		ptr = section_ptr(module->debug_types, 0);
+		end = section_end(module->debug_types);
+		if (!drgn_dwarf_index_read_cu(state, module, ptr, end))
+			drgn_dwarf_index_update_cancel(state, drgn_eof());
+	}
 }
 
 bool drgn_dwarf_index_find_definition(struct drgn_dwarf_index *dindex, uintptr_t die_addr,
@@ -1192,8 +1221,7 @@ index_cu_second_pass(struct drgn_dwarf_index_namespace *ns,
 		     struct drgn_dwarf_index_cu *cu, const char *ptr)
 {
 	struct drgn_error *err;
-	Elf_Data *debug_info = cu->module->debug_info;
-	const char *debug_info_buffer = section_ptr(debug_info, 0);
+	const char *debug_info_buffer = cu->buffer_ptr;
 	Elf_Data *debug_str = cu->module->debug_str;
 	const char *end = cu->end;
 	unsigned int depth = 0;
@@ -1514,7 +1542,7 @@ drgn_dwarf_index_update_end(struct drgn_dwarf_index_update_state *state)
 		if (drgn_dwarf_index_update_cancelled(state))
 			continue;
 		struct drgn_dwarf_index_cu *cu = &dindex->cus.data[i];
-		const char *ptr = &cu->ptr[cu->is_64_bit ? 23 : 11];
+		const char *ptr = &cu->ptr[index_cu_header_offset(cu)];
 		struct drgn_error *cu_err =
 			index_cu_second_pass(&dindex->global, cu, ptr);
 		if (cu_err)

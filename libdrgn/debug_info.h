@@ -68,6 +68,7 @@ struct drgn_debug_info_module {
 	Elf_Data *debug_abbrev;
 	Elf_Data *debug_str;
 	Elf_Data *debug_line;
+	Elf_Data *debug_types;
 
 	/*
 	 * path, elf, and fd are used when an ELF file was reported with
