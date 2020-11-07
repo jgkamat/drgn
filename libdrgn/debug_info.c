@@ -795,6 +795,7 @@ drgn_get_debug_sections(struct drgn_debug_info_module *module)
 	module->debug_abbrev = NULL;
 	module->debug_str = NULL;
 	module->debug_line = NULL;
+	module->debug_types = NULL;
 	Elf_Scn *scn = NULL;
 	while ((scn = elf_nextscn(elf, scn))) {
 		GElf_Shdr shdr_mem;
@@ -818,6 +819,9 @@ drgn_get_debug_sections(struct drgn_debug_info_module *module)
 			sectionp = &module->debug_str;
 		else if (!module->debug_line && strcmp(scnname, ".debug_line") == 0)
 			sectionp = &module->debug_line;
+		else if (!module->debug_types && strcmp(scnname, ".debug_types") == 0) {
+			sectionp = &module->debug_types;
+		}
 		else
 			continue;
 		err = read_elf_section(scn, sectionp);
