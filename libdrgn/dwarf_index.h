@@ -131,6 +131,14 @@ DEFINE_VECTOR_TYPE(drgn_dwarf_index_cu_vector, struct drgn_dwarf_index_cu)
 DEFINE_VECTOR_TYPE(drgn_dwarf_index_pending_die_vector,
 		   struct drgn_dwarf_index_pending_die)
 
+struct drgn_dwarf_index_type_signature {
+	/* Module and offset of DIE. */
+	Dwfl_Module *module;
+	size_t offset;
+};
+
+DEFINE_HASH_MAP_TYPE(drgn_dwarf_index_signature_map, uint64_t, struct drgn_dwarf_index_type_signature)
+
 /** Mapping from names/tags to DIEs/nested namespaces. */
 struct drgn_dwarf_index_namespace {
 	/**
@@ -171,6 +179,8 @@ struct drgn_dwarf_index {
 	struct drgn_dwarf_index_specification_map specifications;
 	/** Indexed compilation units. */
 	struct drgn_dwarf_index_cu_vector cus;
+	/** Map from a 8 byte signature value to the type represented in a type unit. */
+	struct drgn_dwarf_index_signature_map signatures;
 };
 
 /** Initialize a @ref drgn_dwarf_index. */

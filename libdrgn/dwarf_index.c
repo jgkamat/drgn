@@ -127,6 +127,8 @@ DEFINE_HASH_TABLE_FUNCTIONS(drgn_dwarf_index_die_map, string_hash_pair,
 DEFINE_VECTOR_FUNCTIONS(drgn_dwarf_index_die_vector)
 DEFINE_HASH_TABLE_FUNCTIONS(drgn_dwarf_index_specification_map,
 			    int_key_hash_pair, scalar_key_eq)
+DEFINE_HASH_TABLE_FUNCTIONS(drgn_dwarf_index_signature_map, int_key_hash_pair,
+			    scalar_key_eq)
 
 static inline size_t hash_pair_to_shard(struct hash_pair hp)
 {
@@ -210,6 +212,7 @@ void drgn_dwarf_index_init(struct drgn_dwarf_index *dindex)
 	drgn_dwarf_index_namespace_init(&dindex->global, dindex);
 	drgn_dwarf_index_specification_map_init(&dindex->specifications);
 	drgn_dwarf_index_cu_vector_init(&dindex->cus);
+	drgn_dwarf_index_signature_map_init(&dindex->signatures);
 }
 
 static void drgn_dwarf_index_cu_deinit(struct drgn_dwarf_index_cu *cu)
@@ -248,6 +251,7 @@ void drgn_dwarf_index_deinit(struct drgn_dwarf_index *dindex)
 	drgn_dwarf_index_cu_vector_deinit(&dindex->cus);
 	drgn_dwarf_index_specification_map_deinit(&dindex->specifications);
 	drgn_dwarf_index_namespace_deinit(&dindex->global);
+	drgn_dwarf_index_signature_map_deinit(&dindex->signatures);
 }
 
 void drgn_dwarf_index_update_begin(struct drgn_dwarf_index_update_state *state,
@@ -594,10 +598,11 @@ static bool index_cu_is_type_unit(struct drgn_dwarf_index_cu *cu) {
 		section_ptr(cu->module->debug_types, 0) == cu->buffer_ptr;
 }
 
-static struct drgn_error *read_cu(struct drgn_dwarf_index_cu *cu)
+static struct drgn_error *read_cu(struct drgn_dwarf_index_cu *cu, struct drgn_dwarf_index *dindex)
 {
 
-	const char *ptr = &cu->ptr[cu->is_64_bit ? 12 : 4];
+	const char *cu_ptr = &cu->ptr[cu->is_64_bit ? 12 : 4];
+	const char *ptr = cu_ptr;
 	uint16_t version;
 	if (!mread_u16(&ptr, cu->end, cu->bswap, &version))
 		return drgn_eof();
@@ -621,6 +626,41 @@ static struct drgn_error *read_cu(struct drgn_dwarf_index_cu *cu)
 
 	if (!mread_u8(&ptr, cu->end, &cu->address_size))
 		return drgn_eof();
+
+	uint64_t type_signature;
+	size_t type_offset;
+	if (index_cu_is_type_unit(cu)) {
+		if (!mread_u64_into_u64(&ptr, cu->end, cu->bswap,
+					&type_signature)) {
+			return drgn_eof();
+		}
+		if (cu->is_64_bit) {
+			if (!mread_u64_into_size_t(&ptr, cu->end, cu->bswap,
+						   &type_offset))
+				return drgn_eof();
+		} else {
+			if (!mread_u32_into_size_t(&ptr, cu->end, cu->bswap,
+						   &type_offset))
+				return drgn_eof();
+		}
+		struct drgn_dwarf_index_signature_map_entry entry = {
+			.key = type_signature,
+			.value =
+			{
+				.module = cu->module->dwfl_module,
+				.offset = (size_t)cu_ptr + type_offset
+			}
+		};
+		struct drgn_error *err = NULL;
+		#pragma omp critical(drgn_dwarf_index_signatures)
+		if (!drgn_dwarf_index_signature_map_insert(&dindex->signatures,
+							  &entry,
+							  NULL))
+			// TODO distinguish nomem from invalid dwarf
+			err = &drgn_enomem;
+		if (err)
+			return err;
+	}
 
 	return read_abbrev_table(cu, debug_abbrev_offset);
 }
@@ -1058,7 +1098,7 @@ bool drgn_dwarf_index_read_cu(struct drgn_dwarf_index_update_state *state,
 				.is_64_bit = is_64_bit,
 				.bswap = module->bswap,
 			};
-			struct drgn_error *cu_err = read_cu(&cu);
+			struct drgn_error *cu_err = read_cu(&cu, state->dindex);
 			if (cu_err)
 				goto cu_err;
 
