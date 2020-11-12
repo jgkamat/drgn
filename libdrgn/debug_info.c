@@ -2109,6 +2109,19 @@ drgn_type_from_dwarf_internal(struct drgn_debug_info *dbinfo, Dwarf_Die *die,
 					 "maximum DWARF type parsing depth exceeded");
 	}
 
+	// Follow signature tags on die
+	Dwarf_Die type_unit_die;
+	{
+		Dwarf_Attribute attr_mem;
+		Dwarf_Attribute *attr;
+		if ((attr = dwarf_attr_integrate(die, DW_AT_signature, &attr_mem))) {
+			if (!dwarf_formref_die(attr, &type_unit_die))
+				return drgn_error_format(DRGN_ERROR_OTHER,
+							 "tag 0x%x has invalid DW_AT_signature", dwarf_tag(die));
+			die = &type_unit_die;
+		}
+	}
+
 	struct drgn_dwarf_type_map_entry entry = {
 		.key = die->addr,
 	};
