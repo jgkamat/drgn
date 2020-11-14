@@ -81,7 +81,7 @@ struct drgn_dwarf_index_die {
 		struct drgn_dwarf_index_namespace *namespace;
 	};
 	Dwfl_Module *module;
-	size_t offset;
+	uintptr_t addr;
 };
 
 DEFINE_HASH_MAP_TYPE(drgn_dwarf_index_die_map, struct string, uint32_t)
@@ -113,7 +113,7 @@ struct drgn_dwarf_index_specification {
 	uintptr_t declaration;
 	/* Module and offset of DIE. */
 	Dwfl_Module *module;
-	size_t offset;
+	uintptr_t addr;
 };
 
 static inline uintptr_t
@@ -331,7 +331,7 @@ struct drgn_error *drgn_dwarf_index_get_die(struct drgn_dwarf_index_die *die,
  * @param [out] bias_ret The returned bias for the above die.
  */
 bool drgn_dwarf_index_find_definition(struct drgn_dwarf_index *dindex, uintptr_t die_addr,
-				      Dwfl_Module **module_ret, size_t *offset_ret);
+				      Dwfl_Module **module_ret, uintptr_t *addr_ret);
 /** @} */
 
 #endif /* DRGN_DWARF_INDEX_H */

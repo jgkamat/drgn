@@ -1249,12 +1249,12 @@ drgn_lazy_object_from_dwarf(struct drgn_debug_info *dbinfo,
 	bool decl;
 	if (!dwarf_flag(die, DW_AT_declaration, &decl) && decl) {
 		Dwfl_Module *module;
-		Dwarf_Off offset;
-		if (drgn_dwarf_index_find_definition(&dbinfo->dindex, (uintptr_t)die->addr, &module, &offset)) {
+		uintptr_t die_addr;
+		if (drgn_dwarf_index_find_definition(&dbinfo->dindex, (uintptr_t)die->addr, &module, &die_addr)) {
 			Dwarf *dwarf = dwfl_module_getdwarf(module, &bias);
 			if (!dwarf)
 				return drgn_error_libdwfl();
-			if (!dwarf_offdie(dwarf, offset, die))
+			if (!dwarf_die_addr_die(dwarf, (void*)die_addr, die))
 				return drgn_error_libdw();
 		}
 	}
@@ -2245,7 +2245,6 @@ drgn_type_from_dwarf_internal(struct drgn_debug_info *dbinfo,
 		Dwarf_Attribute attr_mem;
 		Dwarf_Attribute *attr;
 		if ((attr = dwarf_attr_integrate(die, DW_AT_signature, &attr_mem))) {
-			Dwarf_Word sig_word;
 			if (!dwarf_formref_die(attr, &type_unit_die))
 				return drgn_error_format(DRGN_ERROR_OTHER,
 							 "tag 0x%x has invalid DW_AT_signature", dwarf_tag(die));
