@@ -104,8 +104,8 @@ DEFINE_VECTOR_FUNCTIONS(drgn_dwarf_index_cu_vector)
 struct drgn_dwarf_index_pending_die {
 	/* Index of compilation unit containing DIE. */
 	size_t cu;
-	/* Offset of DIE in .debug_info. */
-	size_t offset;
+	/* Address of DIE in dwarf */
+	uintptr_t addr;
 };
 
 DEFINE_VECTOR_FUNCTIONS(drgn_dwarf_index_pending_die_vector)
@@ -785,12 +785,12 @@ out_directories:
 
 static struct drgn_error *
 index_specification(struct drgn_dwarf_index *dindex, uintptr_t declaration,
-		    Dwfl_Module *module, size_t offset)
+		    Dwfl_Module *module, uintptr_t addr)
 {
 	struct drgn_dwarf_index_specification entry = {
 		.declaration = declaration,
 		.module = module,
-		.offset = offset,
+		.addr = addr,
 	};
 	struct hash_pair hp =
 		drgn_dwarf_index_specification_map_hash(&declaration);
@@ -1007,7 +1007,7 @@ skip:
 			if (!declaration &&
 			    (err = index_specification(dindex, specification,
 						       cu->module->dwfl_module,
-						       die_offset)))
+						       (uintptr_t)debug_info_buffer + die_offset)))
 				return err;
 		}
 
@@ -1096,7 +1096,7 @@ void drgn_dwarf_index_read_module(struct drgn_dwarf_index_update_state *state,
 }
 
 static bool find_definition(struct drgn_dwarf_index *dindex, uintptr_t die_addr,
-			    Dwfl_Module **module_ret, size_t *offset_ret)
+			    Dwfl_Module **module_ret, uintptr_t *addr_ret)
 {
 	struct drgn_dwarf_index_specification_map_iterator it =
 		drgn_dwarf_index_specification_map_search(&dindex->specifications,
@@ -1104,14 +1104,14 @@ static bool find_definition(struct drgn_dwarf_index *dindex, uintptr_t die_addr,
 	if (!it.entry)
 		return false;
 	*module_ret = it.entry->module;
-	*offset_ret = it.entry->offset;
+	*addr_ret = it.entry->addr;
 	return true;
 }
 
 static bool append_die_entry(struct drgn_dwarf_index *dindex,
 			     struct drgn_dwarf_index_shard *shard, uint8_t tag,
 			     uint64_t file_name_hash, Dwfl_Module *module,
-			     size_t offset)
+			     uintptr_t addr)
 {
 	if (shard->dies.size == UINT32_MAX)
 		return false;
@@ -1132,7 +1132,7 @@ static bool append_die_entry(struct drgn_dwarf_index *dindex,
 		die->file_name_hash = file_name_hash;
 	}
 	die->module = module;
-	die->offset = offset;
+	die->addr = addr;
 
 	return true;
 }
@@ -1141,7 +1141,7 @@ static struct drgn_error *index_die(struct drgn_dwarf_index_namespace *ns,
 				    struct drgn_dwarf_index_cu *cu,
 				    const char *name, uint8_t tag,
 				    uint64_t file_name_hash,
-				    Dwfl_Module *module, size_t offset)
+				    Dwfl_Module *module, uintptr_t addr)
 {
 	struct drgn_error *err;
 	struct drgn_dwarf_index_die_map_entry entry = {
@@ -1163,7 +1163,7 @@ static struct drgn_error *index_die(struct drgn_dwarf_index_namespace *ns,
 						    hp);
 	if (!it.entry) {
 		if (!append_die_entry(ns->dindex, shard, tag, file_name_hash,
-				      module, offset)) {
+				      module, addr)) {
 			err = &drgn_enomem;
 			goto err;
 		}
@@ -1192,7 +1192,7 @@ static struct drgn_error *index_die(struct drgn_dwarf_index_namespace *ns,
 
 	index = die - shard->dies.data;
 	if (!append_die_entry(ns->dindex, shard, tag, file_name_hash, module,
-			      offset)) {
+			      addr)) {
 		err = &drgn_enomem;
 		goto err;
 	}
@@ -1207,7 +1207,7 @@ out:
 			goto err;
 		}
 		pending->cu = cu - ns->dindex->cus.data;
-		pending->offset = offset;
+		pending->addr = addr;
 	}
 	err = NULL;
 err:
@@ -1406,6 +1406,7 @@ skip:
 			if (insn & DIE_FLAG_DECLARATION)
 				declaration = true;
 			Dwfl_Module *module = cu->module->dwfl_module;
+			uintptr_t die_addr;
 			if (tag == DW_TAG_enumerator) {
 				if (depth1_tag != DW_TAG_enumeration_type)
 					goto next;
@@ -1420,9 +1421,11 @@ skip:
 				   !find_definition(ns->dindex,
 						    (uintptr_t)debug_info_buffer +
 						    die_offset,
-						    &module, &die_offset)) {
+						    &module, &die_addr)) {
 					goto next;
 			}
+			if (declaration)
+				die_offset = (size_t)(die_addr - (uintptr_t)debug_info_buffer);
 
 			if (decl_file > cu->num_file_names) {
 				return drgn_error_format(DRGN_ERROR_OTHER,
@@ -1435,7 +1438,9 @@ skip:
 			else
 				file_name_hash = 0;
 			if ((err = index_die(ns, cu, name, tag, file_name_hash,
-					     module, die_offset)))
+					     module,
+					     die_offset +
+					     (uintptr_t)debug_info_buffer)))
 				return err;
 		}
 
@@ -1574,8 +1579,7 @@ static struct drgn_error *index_namespace(struct drgn_dwarf_index_namespace *ns)
 				&ns->pending_dies.data[i];
 			struct drgn_dwarf_index_cu *cu =
 				&ns->dindex->cus.data[pending->cu];
-			const char *ptr = section_ptr(cu->module->debug_info,
-						      pending->offset);
+			const char *ptr = (char*)pending->addr;
 			struct drgn_error *cu_err =
 				index_cu_second_pass(ns, cu, ptr);
 			if (cu_err) {
@@ -1701,7 +1705,7 @@ struct drgn_error *drgn_dwarf_index_get_die(struct drgn_dwarf_index_die *die,
 	Dwarf *dwarf = dwfl_module_getdwarf(die->module, &bias);
 	if (!dwarf)
 		return drgn_error_libdwfl();
-	if (!dwarf_offdie(dwarf, die->offset, die_ret))
+	if (!dwarf_die_addr_die(dwarf, (void*)die->addr, die_ret))
 		return drgn_error_libdw();
 	if (bias_ret)
 		*bias_ret = bias;
