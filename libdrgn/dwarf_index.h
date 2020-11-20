@@ -332,6 +332,12 @@ struct drgn_error *drgn_dwarf_index_get_die(struct drgn_dwarf_index_die *die,
  */
 bool drgn_dwarf_index_find_definition(struct drgn_dwarf_index *dindex, uintptr_t die_addr,
 				      Dwfl_Module **module_ret, uintptr_t *addr_ret);
+
+
+struct drgn_error *drgn_die_to_dwarf_die(Dwarf *dwarf,
+					 Dwfl_Module *module,
+					 uintptr_t die_addr,
+					 Dwarf_Die *die_ret);
 /** @} */
 
 #endif /* DRGN_DWARF_INDEX_H */

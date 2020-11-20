@@ -1237,6 +1237,7 @@ drgn_lazy_object_from_dwarf(struct drgn_debug_info *dbinfo,
 			    const char* name,
 			    struct drgn_lazy_parameter *ret)
 {
+	struct drgn_error *err;
 	struct drgn_object_from_dwarf_thunk *thunk = malloc(sizeof(*thunk));
 	if (!thunk)
 		return &drgn_enomem;
@@ -1254,7 +1255,7 @@ drgn_lazy_object_from_dwarf(struct drgn_debug_info *dbinfo,
 			Dwarf *dwarf = dwfl_module_getdwarf(module, &bias);
 			if (!dwarf)
 				return drgn_error_libdwfl();
-			if (!dwarf_die_addr_die(dwarf, (void*)die_addr, die))
+			if ((err = drgn_die_to_dwarf_die(dwarf, module, die_addr, die)))
 				return drgn_error_libdw();
 		}
 	}
