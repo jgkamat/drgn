@@ -319,6 +319,10 @@ struct drgn_error *drgn_dwarf_index_get_die(struct drgn_dwarf_index_die *die,
 					    Dwarf_Die *die_ret,
 					    uint64_t *bias_ret);
 
+struct drgn_error *drgn_die_to_dwarf_die(Dwarf *dwarf,
+					 Dwfl_Module *module,
+					 uintptr_t die_addr,
+					 Dwarf_Die *die_ret);
 /** @} */
 
 #endif /* DRGN_DWARF_INDEX_H */

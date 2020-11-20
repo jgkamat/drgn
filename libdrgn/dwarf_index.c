@@ -1697,16 +1697,44 @@ drgn_dwarf_index_iterator_next(struct drgn_dwarf_index_iterator *it)
 	return die;
 }
 
+struct drgn_error *drgn_die_to_dwarf_die(Dwarf *dwarf,
+					 Dwfl_Module *dwfl_module,
+					 uintptr_t die_addr,
+					 Dwarf_Die *die_ret)
+{
+	void **userdatap;
+	dwfl_module_info(dwfl_module, &userdatap, NULL, NULL, NULL, NULL, NULL, NULL);
+	struct drgn_debug_info_module *module = *userdatap;
+	uintptr_t start = (uintptr_t)module->debug_info->d_buf;
+	uint64_t size = module->debug_info->d_size;
+	if (die_addr >= start &&
+	    die_addr < start + size) {
+		if (!dwarf_offdie(dwarf, die_addr - start, die_ret))
+			return drgn_error_libdw();
+		return NULL;
+	}
+	start = (uintptr_t)module->debug_types->d_buf;
+	size = module->debug_types->d_size;
+	if (die_addr >= start &&
+	    die_addr < start + size) {
+		if (!dwarf_offdie_types(dwarf, die_addr - start, die_ret))
+			return drgn_error_libdw();
+		return NULL;
+	}
+	return drgn_error_libdw();
+}
+
 struct drgn_error *drgn_dwarf_index_get_die(struct drgn_dwarf_index_die *die,
 					    Dwarf_Die *die_ret,
 					    uint64_t *bias_ret)
 {
+	struct drgn_error *err;
 	Dwarf_Addr bias;
 	Dwarf *dwarf = dwfl_module_getdwarf(die->module, &bias);
 	if (!dwarf)
 		return drgn_error_libdwfl();
-	if (!dwarf_die_addr_die(dwarf, (void*)die->addr, die_ret))
-		return drgn_error_libdw();
+	if ((err = drgn_die_to_dwarf_die(dwarf, die->module, die->addr, die_ret)))
+		return err;
 	if (bias_ret)
 		*bias_ret = bias;
 	return NULL;
