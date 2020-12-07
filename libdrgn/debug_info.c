@@ -1165,7 +1165,7 @@ drgn_type_from_dwarf_internal(struct drgn_debug_info *dbinfo,
  * @param[out] ret Returned type.
  * @return @c NULL on success, non-@c NULL on error.
  */
-static inline struct drgn_error *
+struct drgn_error *
 drgn_type_from_dwarf(struct drgn_debug_info *dbinfo, Dwarf_Die *die,
 		     uint64_t bias, struct drgn_qualified_type *ret)
 {
