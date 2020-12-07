@@ -281,6 +281,11 @@ struct drgn_error *read_elf_section(Elf_Scn *scn, Elf_Data **ret);
 struct drgn_error *elf_address_range(Elf *elf, uint64_t bias,
 				     uint64_t *start_ret, uint64_t *end_ret);
 
+
+struct drgn_error *
+drgn_type_from_dwarf(struct drgn_debug_info *dbinfo, Dwarf_Die *die,
+		     uint64_t bias, struct drgn_qualified_type *ret);
+
 /** @} */
 
 #endif /* DRGN_DEBUG_INFO_H */

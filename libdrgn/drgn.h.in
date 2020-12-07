@@ -1445,6 +1445,11 @@ struct drgn_error *drgn_program_find_symbol_by_name(struct drgn_program *prog,
 						    const char *name,
 						    struct drgn_symbol **ret);
 
+
+struct drgn_error *
+drgn_program_find_type_by_symbol_name(struct drgn_program *prog,
+				      const char* name, struct drgn_qualified_type *ret);
+
 /** Element type and size. */
 struct drgn_element_info {
 	/** Type of the element. */

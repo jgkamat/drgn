@@ -1104,6 +1104,8 @@ struct find_symbol_by_name_arg {
 	struct drgn_symbol **ret;
 	struct drgn_error *err;
 	bool bad_symtabs;
+	Dwarf_Addr bias;
+	Dwfl_Module* dwfl_module;
 };
 
 static int find_symbol_by_name_cb(Dwfl_Module *dwfl_module, void **userdatap,
@@ -1124,17 +1126,20 @@ static int find_symbol_by_name_cb(Dwfl_Module *dwfl_module, void **userdatap,
 		GElf_Addr elf_addr;
 		const char *name;
 
+		Dwarf_Addr bias;
 		name = dwfl_module_getsym_info(dwfl_module, i, &elf_sym,
-					       &elf_addr, NULL, NULL, NULL);
+					       &elf_addr, NULL, NULL, &bias);
 		if (name && strcmp(arg->name, name) == 0) {
 			struct drgn_symbol *sym;
 
 			sym = malloc(sizeof(*sym));
 			if (sym) {
+				arg->dwfl_module = dwfl_module;
 				sym->name = name;
 				sym->address = elf_addr;
 				sym->size = elf_sym.st_size;
 				*arg->ret = sym;
+				arg->bias = bias;
 			} else {
 				arg->err = &drgn_enomem;
 			}
@@ -1142,6 +1147,75 @@ static int find_symbol_by_name_cb(Dwfl_Module *dwfl_module, void **userdatap,
 		}
 	}
 	return DWARF_CB_OK;
+}
+
+bool
+drgn_traverse_die_for_pc(Dwarf_Die die, Dwarf_Addr pc_addr, Dwarf_Die *ret) {
+	Dwarf_Die child;
+	Dwarf_Die *ptr = &die;
+
+	if (dwarf_haspc(&die, pc_addr)) {
+		*ret = die;
+		return true;
+	}
+
+	if (dwarf_child(&die, &child) == 0
+	    && drgn_traverse_die_for_pc(child, pc_addr, ret))
+		return true;
+
+
+	if (dwarf_siblingof(&die, &child) == 0)
+		return drgn_traverse_die_for_pc(child, pc_addr, ret);
+	return false;
+}
+
+LIBDRGN_PUBLIC struct drgn_error *
+drgn_program_find_type_by_symbol_name(struct drgn_program *prog,
+				      const char* name, struct drgn_qualified_type *ret)
+{
+	struct drgn_symbol* sym;
+	struct find_symbol_by_name_arg arg = {
+		.name = name,
+		.ret = &sym,
+	};
+
+	if (prog->_dbinfo &&
+	    dwfl_getmodules(prog->_dbinfo->dwfl, find_symbol_by_name_cb,
+			    &arg, 0)) {
+		Dwarf_Addr prog_addr = (*arg.ret)->address - arg.bias;
+		printf("0x%lx\n", prog_addr);
+		Dwarf_Die die;
+		Dwarf* dwarf = dwfl_module_getdwarf(arg.dwfl_module, &arg.bias);
+		if (!dwarf)
+			return drgn_error_libdwfl();
+
+
+		if (dwarf_addrdie(dwarf, prog_addr, &die) == NULL) {
+			// addrdie is broken probably due to missing aranges
+			Dwarf_Die *die_ptr = NULL;
+			while ((die_ptr = dwfl_module_nextcu(arg.dwfl_module, die_ptr, &arg.bias)) &&
+			       !dwarf_haspc(die_ptr, prog_addr));
+
+			if (die_ptr == NULL)
+				return drgn_error_format(DRGN_ERROR_LOOKUP,
+							 "Could not look up die at address 0x%x", prog_addr);
+			die = *die_ptr;
+		}
+		printf("0x%lx\n", dwarf_tag(&die));
+		if (dwarf_child(&die, &die) == 0) {
+			Dwarf_Die die_ret;
+			if (drgn_traverse_die_for_pc(die, prog_addr, &die_ret)) {
+				printf("0x%lx\n", dwarf_tag(&die_ret));
+				struct drgn_error* err = drgn_type_from_dwarf(prog->_dbinfo, &die_ret, arg.bias, ret);
+				printf("%lx\n", err);
+			}
+		}
+		return arg.err;
+	}
+	return drgn_error_format(DRGN_ERROR_LOOKUP,
+				 "could not find symbol with name '%s'%s", name,
+				 arg.bad_symtabs ?
+				 " (could not get some symbol tables)" : "");
 }
 
 LIBDRGN_PUBLIC struct drgn_error *

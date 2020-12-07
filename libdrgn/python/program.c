@@ -763,6 +763,28 @@ static PyObject *Program_symbol(Program *self, PyObject *arg)
 	return ret;
 }
 
+static PyObject *Program_mangled(Program *self, PyObject *arg)
+{
+	struct drgn_error *err;
+	struct drgn_qualified_type type;
+	PyObject *ret;
+
+	if (PyUnicode_Check(arg)) {
+		const char *name;
+
+		name = PyUnicode_AsUTF8(arg);
+		if (!name)
+			return NULL;
+		err = drgn_program_find_type_by_symbol_name(&self->prog, name, &type);
+	} else {
+		PyErr_SetString(PyExc_TypeError, "type must be str");
+		return NULL;
+	}
+	if (err)
+		return set_drgn_error(err);
+	return DrgnType_wrap(type);
+}
+
 static DrgnObject *Program_subscript(Program *self, PyObject *key)
 {
 	struct drgn_error *err;
@@ -903,6 +925,7 @@ static PyMethodDef Program_methods[] = {
 	 METH_VARARGS | METH_KEYWORDS, drgn_Program_stack_trace_DOC},
 	{"symbol", (PyCFunction)Program_symbol, METH_O,
 	 drgn_Program_symbol_DOC},
+	{"mangled", (PyCFunction)Program_mangled, METH_O, drgn_Program_symbol_DOC},
 	{"void_type", (PyCFunction)Program_void_type,
 	 METH_VARARGS | METH_KEYWORDS, drgn_Program_void_type_DOC},
 	{"int_type", (PyCFunction)Program_int_type,
