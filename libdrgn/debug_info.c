@@ -1798,8 +1798,8 @@ drgn_compound_type_from_dwarf(struct drgn_debug_info *dbinfo,
 						 dw_tag_str);
 		}
 
-		if ((!declaration && (dwarf_tag(&child) == DW_TAG_member) && !external) ||
-		    dwarf_tag(&child) == DW_TAG_subprogram) {
+		if ((!declaration && (dwarf_tag(&child) == DW_TAG_member) && !external) /* ||
+		    dwarf_tag(&child) == DW_TAG_subprogram */) {
 			if (member.addr) {
 				err = parse_member(dbinfo, &member, bias,
 						   little_endian, false,
