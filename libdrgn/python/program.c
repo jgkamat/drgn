@@ -775,7 +775,7 @@ static PyObject *Program_mangled(Program *self, PyObject *arg)
 		name = PyUnicode_AsUTF8(arg);
 		if (!name)
 			return NULL;
-		err = drgn_program_find_type_by_symbol_name(&self->prog, name, &type);
+		err = drgn_program_find_type_by_symbol_name(&self->prog, name, &type, NULL);
 	} else {
 		PyErr_SetString(PyExc_TypeError, "type must be str");
 		return NULL;

@@ -1171,7 +1171,8 @@ drgn_traverse_die_for_pc(Dwarf_Die die, Dwarf_Addr pc_addr, Dwarf_Die *ret) {
 
 LIBDRGN_PUBLIC struct drgn_error *
 drgn_program_find_type_by_symbol_name(struct drgn_program *prog,
-				      const char* name, struct drgn_qualified_type *ret)
+				      const char* name, struct drgn_qualified_type *ret,
+				      Dwarf_Die *die_ret)
 {
 	struct drgn_symbol* sym;
 	struct find_symbol_by_name_arg arg = {
@@ -1201,9 +1202,12 @@ drgn_program_find_type_by_symbol_name(struct drgn_program *prog,
 			die = *die_ptr;
 		}
 		if (dwarf_child(&die, &die) == 0) {
-			Dwarf_Die die_ret;
-			if (drgn_traverse_die_for_pc(die, prog_addr, &die_ret)) {
-				struct drgn_error* err = drgn_type_from_dwarf(prog->_dbinfo, &die_ret, arg.bias, ret);
+			Dwarf_Die die_found;
+			if (drgn_traverse_die_for_pc(die, prog_addr, &die_found)) {
+				struct drgn_error* err = drgn_type_from_dwarf(prog->_dbinfo, &die_found, arg.bias, ret);
+				if (die_ret)
+					*die_ret = die_found;
+				return err;
 			}
 		}
 		return arg.err;
