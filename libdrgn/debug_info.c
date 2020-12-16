@@ -1398,6 +1398,35 @@ drgn_base_type_from_dwarf(struct drgn_debug_info *dbinfo, Dwarf_Die *die,
 	}
 }
 
+DEFINE_VECTOR(str_vector, const char*)
+static struct drgn_error *
+find_namespace_path(Dwarf_Die current, Dwarf_Die *target, struct str_vector *vec)
+{
+	Dwarf_Die child;
+
+	while (dwarf_siblingof(&current, &child) == 0
+	       && child.addr <= target->addr) {
+		// Skip past addresses which are lower even after a skip
+		current = child;
+	}
+
+	if (current.addr == target->addr)
+		return NULL;
+	if (current.addr > target->addr)
+		return drgn_error_libdw();
+
+	// Now all there is do do is dig
+	if (dwarf_tag(&current) == DW_TAG_namespace) {
+		const char* name = dwarf_diename(&current);
+		if (!str_vector_append(vec, &name))
+			return &drgn_enomem;
+	}
+
+	if (dwarf_child(&current, &child) == 0)
+		return find_namespace_path(child, target, vec);
+	return drgn_error_libdw();
+}
+
 /*
  * DW_TAG_structure_type, DW_TAG_union_type, DW_TAG_class_type, and
  * DW_TAG_enumeration_type can be incomplete (i.e., have a DW_AT_declaration of
@@ -1407,7 +1436,7 @@ drgn_base_type_from_dwarf(struct drgn_debug_info *dbinfo, Dwarf_Die *die,
  */
 static struct drgn_error *
 drgn_debug_info_find_complete(struct drgn_debug_info *dbinfo, uint64_t tag,
-			      const char *name, struct drgn_type **ret)
+			      const char *name, Dwarf_Die *incomplete_die, struct drgn_type **ret)
 {
 	struct drgn_error *err;
 
@@ -1424,7 +1453,44 @@ drgn_debug_info_find_complete(struct drgn_debug_info *dbinfo, uint64_t tag,
 	struct drgn_dwarf_index_die *index_die =
 		drgn_dwarf_index_iterator_next(&it);
 	if (!index_die)
-		return &drgn_stop;
+	{
+		struct str_vector vec;
+		str_vector_init(&vec);
+
+		Dwarf_Die cu_die;
+		dwarf_cu_die(incomplete_die->cu, &cu_die,
+			     NULL, NULL, NULL, NULL, NULL, NULL);
+
+		if ((err = find_namespace_path(cu_die, incomplete_die, &vec))) {
+			err = &drgn_stop;
+			goto err;
+		}
+
+		struct drgn_dwarf_index_namespace *ns = &dbinfo->dindex.global;
+		uint64_t ns_tag = DW_TAG_namespace;
+		for (int i = 0; i < vec.size; i++) {
+			err = drgn_dwarf_index_iterator_init(&it, ns, vec.data[i],
+							     strlen(vec.data[i]), &ns_tag, 1);
+			if (err)
+				goto err;
+			index_die = drgn_dwarf_index_iterator_next(&it);
+			if (!index_die) {
+				err = &drgn_stop;
+				goto err;
+			}
+			ns = index_die->namespace;
+		}
+		err = drgn_dwarf_index_iterator_init(&it, ns, name, strlen(name), &tag, 1);
+		if (err)
+			goto err;
+		index_die = drgn_dwarf_index_iterator_next(&it);
+		if (!index_die)
+			err = &drgn_stop;
+	err:
+		str_vector_deinit(&vec);
+		if (err)
+			return err;
+	}
 	/*
 	 * Look for another matching DIE. If there is one, then we can't be sure
 	 * which type this is, so leave it incomplete rather than guessing.
@@ -1705,7 +1771,7 @@ drgn_compound_type_from_dwarf(struct drgn_debug_info *dbinfo,
 					 dw_tag_str);
 	}
 	if (declaration && tag) {
-		err = drgn_debug_info_find_complete(dbinfo, dw_tag, tag, ret);
+		err = drgn_debug_info_find_complete(dbinfo, dw_tag, tag, die, ret);
 		if (!err || err->code != DRGN_ERROR_STOP)
 			return err;
 	}
@@ -1869,7 +1935,7 @@ drgn_enum_type_from_dwarf(struct drgn_debug_info *dbinfo, Dwarf_Die *die,
 	if (declaration && tag) {
 		err = drgn_debug_info_find_complete(dbinfo,
 						    DW_TAG_enumeration_type,
-						    tag, ret);
+						    tag, die, ret);
 		if (!err || err->code != DRGN_ERROR_STOP)
 			return err;
 	}
