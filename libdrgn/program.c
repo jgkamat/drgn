@@ -1113,15 +1113,18 @@ static int find_symbol_by_name_cb(Dwfl_Module *dwfl_module, void **userdatap,
 				  void *cb_arg)
 {
 	struct find_symbol_by_name_arg *arg = cb_arg;
-	int symtab_len, i;
+	int symtab_len, i, first_global;
 
 	symtab_len = dwfl_module_getsymtab(dwfl_module);
-	i = dwfl_module_getsymtab_first_global(dwfl_module);
+	first_global = i = dwfl_module_getsymtab_first_global(dwfl_module);
 	if (symtab_len == -1 || i == -1) {
 		arg->bad_symtabs = true;
 		return DWARF_CB_OK;
 	}
-	for (; i < symtab_len; i++) {
+	do {
+		if (i >= symtab_len)
+			i = 0;
+
 		GElf_Sym elf_sym;
 		GElf_Addr elf_addr;
 		const char *name;
@@ -1145,7 +1148,8 @@ static int find_symbol_by_name_cb(Dwfl_Module *dwfl_module, void **userdatap,
 			}
 			return DWARF_CB_ABORT;
 		}
-	}
+		i++;
+	} while (i != first_global);
 	return DWARF_CB_OK;
 }
 
