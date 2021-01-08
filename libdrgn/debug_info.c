@@ -1178,6 +1178,11 @@ drgn_type_from_dwarf_thunk_evaluate_fn(struct drgn_type_thunk *thunk,
 {
 	struct drgn_type_from_dwarf_thunk *t =
 		container_of(thunk, struct drgn_type_from_dwarf_thunk, thunk);
+	if (t->die.addr == NULL) {
+		ret->qualifiers = 0;
+		ret->type = drgn_void_type(thunk->prog, &drgn_language_cpp);
+		return NULL;
+	}
 	return drgn_type_from_dwarf_internal(thunk->prog->_dbinfo, &t->die,
 					     t->bias, t->can_be_incomplete_array,
 					     NULL, ret);
@@ -1194,19 +1199,25 @@ drgn_lazy_type_from_dwarf(struct drgn_debug_info *dbinfo,
 			  bool can_be_incomplete_array,
 			  const char *tag_name, struct drgn_lazy_parameter *ret)
 {
+	Dwarf_Die type_die;
 	Dwarf_Attribute attr_mem, *attr;
 	if (!(attr = dwarf_attr_integrate(parent_die, DW_AT_type, &attr_mem))) {
+		// If no type die in a template parameter, that is a void type
+		if (strcmp("DW_TAG_template_type_parameter", tag_name) == 0) {
+			type_die.addr = NULL;
+			goto skip;
+		}
 		return drgn_error_format(DRGN_ERROR_OTHER,
 					 "%s is missing DW_AT_type",
 					 tag_name);
 	}
 
-	Dwarf_Die type_die;
 	if (!dwarf_formref_die(attr, &type_die)) {
 		return drgn_error_format(DRGN_ERROR_OTHER,
 					 "%s has invalid DW_AT_type", tag_name);
 	}
 
+skip: ;
 	struct drgn_type_from_dwarf_thunk *thunk = malloc(sizeof(*thunk));
 	if (!thunk)
 		return &drgn_enomem;
