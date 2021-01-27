@@ -47,7 +47,7 @@ def _compile_debug_abbrev(cu_die):
         buf.append(bool(die.children))
         for attrib in die.attribs:
             _append_uleb128(buf, attrib.name)
-            _append_uleb128(buf, attrib.form)
+            _append_uleb128(buf, DW_FORM.indirect)
         buf.append(0)
         buf.append(0)
         if die.children:
@@ -85,6 +85,7 @@ def _compile_debug_info(cu_die, little_endian, bits):
                 decl_file += 1
             else:
                 value = attrib.value
+            _append_uleb128(buf, attrib.form)
             if attrib.form == DW_FORM.addr:
                 buf.extend(value.to_bytes(bits // 8, byteorder))
             elif attrib.form == DW_FORM.data1:
