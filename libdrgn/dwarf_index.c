@@ -284,7 +284,6 @@ static struct drgn_error *translate_form(
 {
 	switch (indirect_section) {
 	case ATTRIB_INDIRECT:
-	bare:
 		switch (form) {
 		case DW_FORM_addr:
 			*insn_ret = cu->address_size;
@@ -362,7 +361,7 @@ static struct drgn_error *translate_form(
 			*insn_ret = ATTRIB_SIBLING_INDIRECT;
 			return NULL;
 		default:
-			goto bare;
+			return NULL;
 		}
 		break;
 	case ATTRIB_NAME_INDIRECT:
@@ -384,7 +383,7 @@ static struct drgn_error *translate_form(
 			*insn_ret = ATTRIB_NAME_INDIRECT;
 			return NULL;
 		default:
-			goto bare;
+			return NULL;
 		}
 		break;
 
@@ -406,7 +405,7 @@ static struct drgn_error *translate_form(
 			*insn_ret = ATTRIB_STMT_LIST_INDIRECT;
 			return NULL;
 		default:
-			goto bare;
+			return NULL;
 		}
 		break;
 	case ATTRIB_DECL_FILE_INDIRECT:
@@ -436,7 +435,7 @@ static struct drgn_error *translate_form(
 			*insn_ret = ATTRIB_DECL_FILE_INDIRECT;
 			return NULL;
 		default:
-			goto bare;
+			return NULL;
 		}
 		break;
 	case ATTRIB_DECLARATION_INDIRECT:
@@ -1070,11 +1069,20 @@ specification_ref_addr:
 				uint8_t tmp_insn = 0;
 				if ((err = translate_form(code, insn, cu, &tmp_insn, &added_flags)))
 					return err;
+
+				if (tmp_insn == 0)
+				{
+					if (code == DW_FORM_flag_present)
+						continue;
+					if ((err = translate_form(code, ATTRIB_INDIRECT, cu, &tmp_insn, &added_flags)))
+						return err;
+				}
+
 				if (tmp_insn != 0) {
 					insn = tmp_insn;
 					goto indir_parse;
 				} else
-					// all work was done in added_flags, we just need to continue
+					// no idea how we got here.
 					continue;
 			default:
 				skip = insn;
@@ -1495,11 +1503,19 @@ strp:
 				uint8_t tmp_insn = 0;
 				if ((err = translate_form(code, insn, cu, &tmp_insn, &added_flags)))
 					return err;
+				if (tmp_insn == 0)
+				{
+					if (code == DW_FORM_flag_present)
+						continue;
+					if ((err = translate_form(code, ATTRIB_INDIRECT, cu, &tmp_insn, &added_flags)))
+						return err;
+				}
+
 				if (tmp_insn != 0) {
 					insn = tmp_insn;
 					goto indir_parse;
 				} else
-					// all work was done in added_flags, we just need to continue
+					// no idea how we got here.
 					continue;
 			default:
 				skip = insn;
