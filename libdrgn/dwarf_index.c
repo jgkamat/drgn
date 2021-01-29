@@ -28,7 +28,7 @@
  * set to zero if the tag is not of interest); see DIE_FLAG_*.
  */
 enum {
-	INSN_MAX_SKIP = 226,
+	INSN_MAX_SKIP = 219,
 	ATTRIB_BLOCK1,
 	ATTRIB_BLOCK2,
 	ATTRIB_BLOCK4,
@@ -58,7 +58,14 @@ enum {
 	ATTRIB_SPECIFICATION_REF_UDATA,
 	ATTRIB_SPECIFICATION_REF_ADDR4,
 	ATTRIB_SPECIFICATION_REF_ADDR8,
-	ATTRIB_MAX_INSN = ATTRIB_SPECIFICATION_REF_ADDR8,
+	ATTRIB_INDIRECT,
+	ATTRIB_SIBLING_INDIRECT,
+	ATTRIB_NAME_INDIRECT,
+	ATTRIB_STMT_LIST_INDIRECT,
+	ATTRIB_DECL_FILE_INDIRECT,
+	ATTRIB_DECLARATION_INDIRECT,
+	ATTRIB_SPECIFICATION_INDIRECT,
+	ATTRIB_MAX_INSN = ATTRIB_SPECIFICATION_INDIRECT,
 };
 
 enum {
@@ -268,6 +275,241 @@ void drgn_dwarf_index_update_cancel(struct drgn_dwarf_index_update_state *state,
 		state->err = err;
 }
 
+static struct drgn_error *translate_form(
+	uint64_t form,
+	uint8_t indirect_section,
+	struct drgn_dwarf_index_cu *cu,
+	uint8_t *insn_ret,
+	uint8_t *die_flags_ret)
+{
+	switch (indirect_section) {
+	case ATTRIB_INDIRECT:
+		switch (form) {
+		case DW_FORM_addr:
+			*insn_ret = cu->address_size;
+			return NULL;
+		case DW_FORM_data1:
+		case DW_FORM_ref1:
+		case DW_FORM_flag:
+			*insn_ret = 1;
+			return NULL;
+		case DW_FORM_data2:
+		case DW_FORM_ref2:
+			*insn_ret = 2;
+			return NULL;
+		case DW_FORM_data4:
+		case DW_FORM_ref4:
+			*insn_ret = 4;
+			return NULL;
+		case DW_FORM_data8:
+		case DW_FORM_ref8:
+		case DW_FORM_ref_sig8:
+			*insn_ret = 8;
+			return NULL;
+		case DW_FORM_block1:
+			*insn_ret = ATTRIB_BLOCK1;
+			return NULL;
+		case DW_FORM_block2:
+			*insn_ret = ATTRIB_BLOCK2;
+			return NULL;
+		case DW_FORM_block4:
+			*insn_ret = ATTRIB_BLOCK4;
+			return NULL;
+		case DW_FORM_exprloc:
+			*insn_ret = ATTRIB_EXPRLOC;
+			return NULL;
+		case DW_FORM_sdata:
+		case DW_FORM_udata:
+		case DW_FORM_ref_udata:
+			*insn_ret = ATTRIB_LEB128;
+			return NULL;
+		case DW_FORM_ref_addr:
+		case DW_FORM_sec_offset:
+		case DW_FORM_strp:
+			*insn_ret = cu->is_64_bit ? 8 : 4;
+			return NULL;
+		case DW_FORM_string:
+			*insn_ret = ATTRIB_STRING;
+			return NULL;
+		case DW_FORM_indirect:
+			*insn_ret = ATTRIB_INDIRECT;
+			return NULL;
+		default:
+			return drgn_error_format(DRGN_ERROR_OTHER,
+						 "unknown attribute form %" PRIu64,
+						 form);
+		}
+		break;
+	case ATTRIB_SIBLING_INDIRECT:
+		switch (form) {
+		case DW_FORM_ref1:
+			*insn_ret = ATTRIB_SIBLING_REF1;
+			return NULL;
+		case DW_FORM_ref2:
+			*insn_ret = ATTRIB_SIBLING_REF2;
+			return NULL;
+		case DW_FORM_ref4:
+			*insn_ret = ATTRIB_SIBLING_REF4;
+			return NULL;
+		case DW_FORM_ref8:
+			*insn_ret = ATTRIB_SIBLING_REF8;
+			return NULL;
+		case DW_FORM_ref_udata:
+			*insn_ret = ATTRIB_SIBLING_REF_UDATA;
+			return NULL;
+		case DW_FORM_indirect:
+			*insn_ret = ATTRIB_SIBLING_INDIRECT;
+			return NULL;
+		default:
+			return NULL;
+		}
+		break;
+	case ATTRIB_NAME_INDIRECT:
+		switch (form) {
+		case DW_FORM_strp:
+			if (!cu->module->debug_str) {
+				return drgn_error_create(DRGN_ERROR_OTHER,
+							 "DW_FORM_strp without .debug_str section");
+			}
+			if (cu->is_64_bit)
+				*insn_ret = ATTRIB_NAME_STRP8;
+			else
+				*insn_ret = ATTRIB_NAME_STRP4;
+			return NULL;
+		case DW_FORM_string:
+			*insn_ret = ATTRIB_NAME_STRING;
+			return NULL;
+		case DW_FORM_indirect:
+			*insn_ret = ATTRIB_NAME_INDIRECT;
+			return NULL;
+		default:
+			return NULL;
+		}
+		break;
+
+	case ATTRIB_STMT_LIST_INDIRECT:
+		switch (form) {
+		case DW_FORM_data4:
+			*insn_ret = ATTRIB_STMT_LIST_LINEPTR4;
+			return NULL;
+		case DW_FORM_data8:
+			*insn_ret = ATTRIB_STMT_LIST_LINEPTR8;
+			return NULL;
+		case DW_FORM_sec_offset:
+			if (cu->is_64_bit)
+				*insn_ret = ATTRIB_STMT_LIST_LINEPTR8;
+			else
+				*insn_ret = ATTRIB_STMT_LIST_LINEPTR4;
+			return NULL;
+		case DW_FORM_indirect:
+			*insn_ret = ATTRIB_STMT_LIST_INDIRECT;
+			return NULL;
+		default:
+			return NULL;
+		}
+		break;
+	case ATTRIB_DECL_FILE_INDIRECT:
+		switch (form) {
+		case DW_FORM_data1:
+			*insn_ret = ATTRIB_DECL_FILE_DATA1;
+			return NULL;
+		case DW_FORM_data2:
+			*insn_ret = ATTRIB_DECL_FILE_DATA2;
+			return NULL;
+		case DW_FORM_data4:
+			*insn_ret = ATTRIB_DECL_FILE_DATA4;
+			return NULL;
+		case DW_FORM_data8:
+			*insn_ret = ATTRIB_DECL_FILE_DATA8;
+			return NULL;
+			/*
+			 * decl_file must be positive, so if the compiler uses
+			 * DW_FORM_sdata for some reason, just treat it as
+			 * udata.
+			 */
+		case DW_FORM_sdata:
+		case DW_FORM_udata:
+			*insn_ret = ATTRIB_DECL_FILE_UDATA;
+			return NULL;
+		case DW_FORM_indirect:
+			*insn_ret = ATTRIB_DECL_FILE_INDIRECT;
+			return NULL;
+		default:
+			return NULL;
+		}
+		break;
+	case ATTRIB_DECLARATION_INDIRECT:
+		switch (form) {
+		case DW_FORM_flag:
+			*insn_ret = ATTRIB_DECLARATION_FLAG;
+			return NULL;
+		case DW_FORM_flag_present:
+			/*
+			 * This could be an instruction, but as long as
+			 * we have a free DIE flag bit, we might as well
+			 * use it.
+			 */
+			*die_flags_ret |= DIE_FLAG_DECLARATION;
+			return NULL;
+		case DW_FORM_indirect:
+			*insn_ret = ATTRIB_DECLARATION_INDIRECT;
+			return NULL;
+		default:
+			return drgn_error_format(DRGN_ERROR_OTHER,
+						 "unknown attribute form %" PRIu64 " for DW_AT_declaration",
+						 form);
+		}
+		break;
+	case ATTRIB_SPECIFICATION_INDIRECT:
+		switch (form) {
+		case DW_FORM_ref1:
+			*insn_ret = ATTRIB_SPECIFICATION_REF1;
+			return NULL;
+		case DW_FORM_ref2:
+			*insn_ret = ATTRIB_SPECIFICATION_REF2;
+			return NULL;
+		case DW_FORM_ref4:
+			*insn_ret = ATTRIB_SPECIFICATION_REF4;
+			return NULL;
+		case DW_FORM_ref8:
+			*insn_ret = ATTRIB_SPECIFICATION_REF8;
+			return NULL;
+		case DW_FORM_ref_udata:
+			*insn_ret = ATTRIB_SPECIFICATION_REF_UDATA;
+			return NULL;
+		case DW_FORM_ref_addr:
+			if (cu->version >= 3) {
+				if (cu->is_64_bit)
+					*insn_ret = ATTRIB_SPECIFICATION_REF_ADDR8;
+				else
+					*insn_ret = ATTRIB_SPECIFICATION_REF_ADDR4;
+			} else {
+				if (cu->address_size == 8)
+					*insn_ret = ATTRIB_SPECIFICATION_REF_ADDR8;
+				else if (cu->address_size == 4)
+					*insn_ret = ATTRIB_SPECIFICATION_REF_ADDR4;
+				else
+					return drgn_error_format(DRGN_ERROR_OTHER,
+								 "unsupported address size %" PRIu8,
+								 cu->address_size);
+			}
+			return NULL;
+		case DW_FORM_indirect:
+			*insn_ret = ATTRIB_SPECIFICATION_INDIRECT;
+			return NULL;
+		default:
+			return drgn_error_format(DRGN_ERROR_OTHER,
+						 "unknown attribute form %" PRIu64 " for DW_AT_specification",
+						 form);
+		}
+		break;
+	default:
+		return drgn_error_format(DRGN_ERROR_OTHER,
+					 "Unknown section passed to translate_form: %d",
+					 indirect_section);
+	}
+}
+
 static struct drgn_error *read_abbrev_decl(const char **ptr, const char *end,
 					   struct drgn_dwarf_index_cu *cu,
 					   struct uint32_vector *decls,
@@ -339,205 +581,37 @@ static struct drgn_error *read_abbrev_decl(const char **ptr, const char *end,
 		if (name == 0 && form == 0)
 			break;
 
+		insn = 0;
 		if (name == DW_AT_sibling) {
-			switch (form) {
-			case DW_FORM_ref1:
-				insn = ATTRIB_SIBLING_REF1;
-				goto append_insn;
-			case DW_FORM_ref2:
-				insn = ATTRIB_SIBLING_REF2;
-				goto append_insn;
-			case DW_FORM_ref4:
-				insn = ATTRIB_SIBLING_REF4;
-				goto append_insn;
-			case DW_FORM_ref8:
-				insn = ATTRIB_SIBLING_REF8;
-				goto append_insn;
-			case DW_FORM_ref_udata:
-				insn = ATTRIB_SIBLING_REF_UDATA;
-				goto append_insn;
-			default:
-				break;
-			}
+			if ((err = translate_form(form, ATTRIB_SIBLING_INDIRECT, cu, &insn, &die_flags)))
+				return err;
 		} else if (name == DW_AT_name && should_index) {
-			switch (form) {
-			case DW_FORM_strp:
-				if (!cu->module->debug_str) {
-					return drgn_error_create(DRGN_ERROR_OTHER,
-								 "DW_FORM_strp without .debug_str section");
-				}
-				if (cu->is_64_bit)
-					insn = ATTRIB_NAME_STRP8;
-				else
-					insn = ATTRIB_NAME_STRP4;
-				goto append_insn;
-			case DW_FORM_string:
-				insn = ATTRIB_NAME_STRING;
-				goto append_insn;
-			default:
-				break;
-			}
+			if ((err = translate_form(form, ATTRIB_NAME_INDIRECT, cu, &insn, &die_flags)))
+				return err;
 		} else if (name == DW_AT_stmt_list && cu->module->debug_line) {
-			switch (form) {
-			case DW_FORM_data4:
-				insn = ATTRIB_STMT_LIST_LINEPTR4;
-				goto append_insn;
-			case DW_FORM_data8:
-				insn = ATTRIB_STMT_LIST_LINEPTR8;
-				goto append_insn;
-			case DW_FORM_sec_offset:
-				if (cu->is_64_bit)
-					insn = ATTRIB_STMT_LIST_LINEPTR8;
-				else
-					insn = ATTRIB_STMT_LIST_LINEPTR4;
-				goto append_insn;
-			default:
-				break;
-			}
+			if ((err = translate_form(form, ATTRIB_STMT_LIST_INDIRECT, cu, &insn, &die_flags)))
+				return err;
 		} else if (name == DW_AT_decl_file && should_index &&
 			   /* Namespaces are merged, so we ignore their file. */
 			   tag != DW_TAG_namespace) {
-			switch (form) {
-			case DW_FORM_data1:
-				insn = ATTRIB_DECL_FILE_DATA1;
-				goto append_insn;
-			case DW_FORM_data2:
-				insn = ATTRIB_DECL_FILE_DATA2;
-				goto append_insn;
-			case DW_FORM_data4:
-				insn = ATTRIB_DECL_FILE_DATA4;
-				goto append_insn;
-			case DW_FORM_data8:
-				insn = ATTRIB_DECL_FILE_DATA8;
-				goto append_insn;
-			/*
-			 * decl_file must be positive, so if the compiler uses
-			 * DW_FORM_sdata for some reason, just treat it as
-			 * udata.
-			 */
-			case DW_FORM_sdata:
-			case DW_FORM_udata:
-				insn = ATTRIB_DECL_FILE_UDATA;
-				goto append_insn;
-			default:
-				break;
-			}
+			if ((err = translate_form(form, ATTRIB_DECL_FILE_INDIRECT, cu, &insn, &die_flags)))
+				return err;
 		} else if (name == DW_AT_declaration && should_index) {
-			switch (form) {
-			case DW_FORM_flag:
-				insn = ATTRIB_DECLARATION_FLAG;
-				goto append_insn;
-			case DW_FORM_flag_present:
-				/*
-				 * This could be an instruction, but as long as
-				 * we have a free DIE flag bit, we might as well
-				 * use it.
-				 */
-				die_flags |= DIE_FLAG_DECLARATION;
-				break;
-			default:
-				return drgn_error_format(DRGN_ERROR_OTHER,
-							 "unknown attribute form %" PRIu64 " for DW_AT_declaration",
-							 form);
-			}
+			if ((err = translate_form(form, ATTRIB_DECLARATION_INDIRECT, cu, &insn, &die_flags)))
+				return err;
 		} else if (name == DW_AT_specification && should_index) {
-			switch (form) {
-			case DW_FORM_ref1:
-				insn = ATTRIB_SPECIFICATION_REF1;
-				goto append_insn;
-			case DW_FORM_ref2:
-				insn = ATTRIB_SPECIFICATION_REF2;
-				goto append_insn;
-			case DW_FORM_ref4:
-				insn = ATTRIB_SPECIFICATION_REF4;
-				goto append_insn;
-			case DW_FORM_ref8:
-				insn = ATTRIB_SPECIFICATION_REF8;
-				goto append_insn;
-			case DW_FORM_ref_udata:
-				insn = ATTRIB_SPECIFICATION_REF_UDATA;
-				goto append_insn;
-			case DW_FORM_ref_addr:
-				if (cu->version >= 3) {
-					if (cu->is_64_bit)
-						insn = ATTRIB_SPECIFICATION_REF_ADDR8;
-					else
-						insn = ATTRIB_SPECIFICATION_REF_ADDR4;
-				} else {
-					if (cu->address_size == 8)
-						insn = ATTRIB_SPECIFICATION_REF_ADDR8;
-					else if (cu->address_size == 4)
-						insn = ATTRIB_SPECIFICATION_REF_ADDR4;
-					else
-						return drgn_error_format(DRGN_ERROR_OTHER,
-									 "unsupported address size %" PRIu8,
-									 cu->address_size);
-				}
-				goto append_insn;
-			default:
-				return drgn_error_format(DRGN_ERROR_OTHER,
-							 "unknown attribute form %" PRIu64 " for DW_AT_specification",
-							 form);
-			}
+			if ((err = translate_form(form, ATTRIB_SPECIFICATION_INDIRECT, cu, &insn, &die_flags)))
+				return err;
 		}
+		if (insn != 0)
+			goto append_insn;
 
-		switch (form) {
-		case DW_FORM_addr:
-			insn = cu->address_size;
-			break;
-		case DW_FORM_data1:
-		case DW_FORM_ref1:
-		case DW_FORM_flag:
-			insn = 1;
-			break;
-		case DW_FORM_data2:
-		case DW_FORM_ref2:
-			insn = 2;
-			break;
-		case DW_FORM_data4:
-		case DW_FORM_ref4:
-			insn = 4;
-			break;
-		case DW_FORM_data8:
-		case DW_FORM_ref8:
-		case DW_FORM_ref_sig8:
-			insn = 8;
-			break;
-		case DW_FORM_block1:
-			insn = ATTRIB_BLOCK1;
-			goto append_insn;
-		case DW_FORM_block2:
-			insn = ATTRIB_BLOCK2;
-			goto append_insn;
-		case DW_FORM_block4:
-			insn = ATTRIB_BLOCK4;
-			goto append_insn;
-		case DW_FORM_exprloc:
-			insn = ATTRIB_EXPRLOC;
-			goto append_insn;
-		case DW_FORM_sdata:
-		case DW_FORM_udata:
-		case DW_FORM_ref_udata:
-			insn = ATTRIB_LEB128;
-			goto append_insn;
-		case DW_FORM_ref_addr:
-		case DW_FORM_sec_offset:
-		case DW_FORM_strp:
-			insn = cu->is_64_bit ? 8 : 4;
-			break;
-		case DW_FORM_string:
-			insn = ATTRIB_STRING;
-			goto append_insn;
-		case DW_FORM_flag_present:
+		if (form == DW_FORM_flag_present)
 			continue;
-		case DW_FORM_indirect:
-			return drgn_error_create(DRGN_ERROR_OTHER,
-						 "DW_FORM_indirect is not implemented");
-		default:
-			return drgn_error_format(DRGN_ERROR_OTHER,
-						 "unknown attribute form %" PRIu64,
-						 form);
-		}
+		if ((err = translate_form(form, ATTRIB_INDIRECT, cu, &insn, &die_flags)))
+			return err;
+		if (insn != 0 && insn > INSN_MAX_SKIP)
+			goto append_insn;
 
 		if (!first) {
 			uint8_t last_insn = insns->data[insns->size - 1];
@@ -851,8 +925,10 @@ static struct drgn_error *index_cu_first_pass(struct drgn_dwarf_index *dindex,
 		size_t stmt_list = SIZE_MAX;
 		const char *sibling = NULL;
 		uint8_t insn;
+		uint8_t added_flags = 0;
 		while ((insn = *insnp++)) {
 			size_t skip, tmp;
+		indir_parse:
 			switch (insn) {
 			case ATTRIB_BLOCK1:
 				if (!mread_u8_into_size_t(&ptr, end, &skip))
@@ -981,6 +1057,33 @@ specification:
 specification_ref_addr:
 				specification = (uintptr_t)debug_info_buffer + tmp;
 				break;
+			case ATTRIB_INDIRECT:
+			case ATTRIB_SIBLING_INDIRECT:
+			case ATTRIB_NAME_INDIRECT:
+			case ATTRIB_STMT_LIST_INDIRECT:
+			case ATTRIB_DECL_FILE_INDIRECT:
+			case ATTRIB_DECLARATION_INDIRECT:
+			case ATTRIB_SPECIFICATION_INDIRECT:
+				if ((err = mread_uleb128(&ptr, end, &code)))
+					return err;
+				uint8_t tmp_insn = 0;
+				if ((err = translate_form(code, insn, cu, &tmp_insn, &added_flags)))
+					return err;
+
+				if (tmp_insn == 0)
+				{
+					if (code == DW_FORM_flag_present)
+						continue;
+					if ((err = translate_form(code, ATTRIB_INDIRECT, cu, &tmp_insn, &added_flags)))
+						return err;
+				}
+
+				if (tmp_insn != 0) {
+					insn = tmp_insn;
+					goto indir_parse;
+				} else
+					// no idea how we got here.
+					continue;
 			default:
 				skip = insn;
 skip:
@@ -989,7 +1092,7 @@ skip:
 				break;
 			}
 		}
-		insn = *insnp;
+		insn = *insnp | added_flags;
 
 		if (depth == 0) {
 			if (stmt_list != SIZE_MAX &&
@@ -1251,8 +1354,10 @@ index_cu_second_pass(struct drgn_dwarf_index_namespace *ns,
 		bool specification = false;
 		const char *sibling = NULL;
 		uint8_t insn;
+		uint8_t added_flags = 0;
 		while ((insn = *insnp++)) {
 			size_t skip, tmp;
+		indir_parse:
 			switch (insn) {
 			case ATTRIB_BLOCK1:
 				if (!mread_u8_into_size_t(&ptr, end, &skip))
@@ -1386,6 +1491,32 @@ strp:
 				specification = true;
 				skip = 8;
 				goto skip;
+			case ATTRIB_INDIRECT:
+			case ATTRIB_SIBLING_INDIRECT:
+			case ATTRIB_NAME_INDIRECT:
+			case ATTRIB_STMT_LIST_INDIRECT:
+			case ATTRIB_DECL_FILE_INDIRECT:
+			case ATTRIB_DECLARATION_INDIRECT:
+			case ATTRIB_SPECIFICATION_INDIRECT:
+				if ((err = mread_uleb128(&ptr, end, &code)))
+					return err;
+				uint8_t tmp_insn = 0;
+				if ((err = translate_form(code, insn, cu, &tmp_insn, &added_flags)))
+					return err;
+				if (tmp_insn == 0)
+				{
+					if (code == DW_FORM_flag_present)
+						continue;
+					if ((err = translate_form(code, ATTRIB_INDIRECT, cu, &tmp_insn, &added_flags)))
+						return err;
+				}
+
+				if (tmp_insn != 0) {
+					insn = tmp_insn;
+					goto indir_parse;
+				} else
+					// no idea how we got here.
+					continue;
 			default:
 				skip = insn;
 skip:
@@ -1394,7 +1525,7 @@ skip:
 				break;
 			}
 		}
-		insn = *insnp;
+		insn = *insnp | added_flags;
 
 		uint8_t tag = insn & DIE_FLAG_TAG_MASK;
 		if (depth == 1) {
