@@ -1095,9 +1095,6 @@ skip:
 		insn = *insnp | added_flags;
 
 		if (depth == 0) {
-			if (stmt_list != SIZE_MAX &&
-			    (err = read_file_name_table(dindex, cu, stmt_list)))
-				return err;
 		} else if (specification) {
 			if (insn & DIE_FLAG_DECLARATION)
 				declaration = true;
@@ -1558,6 +1555,7 @@ skip:
 			if (declaration)
 				die_offset = (size_t)(die_addr - (uintptr_t)debug_info_buffer);
 
+      decl_file = 0;
 			if (decl_file > cu->num_file_names) {
 				return drgn_error_format(DRGN_ERROR_OTHER,
 							 "invalid DW_AT_decl_file %zu",
