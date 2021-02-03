@@ -434,6 +434,7 @@ void drgn_compound_type_builder_init(struct drgn_compound_type_builder *builder,
 	builder->kind = kind;
 	drgn_type_member_vector_init(&builder->members);
 	drgn_template_parameter_vector_init(&builder->templates);
+	drgn_template_parameter_vector_init(&builder->parents);
 }
 
 void
@@ -445,6 +446,7 @@ drgn_compound_type_builder_deinit(struct drgn_compound_type_builder *builder)
 		drgn_lazy_parameter_deinit(&builder->templates.data[i].parameter);
 	drgn_type_member_vector_deinit(&builder->members);
 	drgn_template_parameter_vector_deinit(&builder->templates);
+	drgn_template_parameter_vector_deinit(&builder->parents);
 }
 
 struct drgn_error *
@@ -537,6 +539,8 @@ drgn_compound_type_create(struct drgn_compound_type_builder *builder,
 	type->_private.template_parameters = builder->templates.data;
 	type->_private.num_template_parameters = builder->templates.size;
 	type->_private.program = builder->prog;
+	type->_private.parents = builder->parents.data;
+	type->_private.num_parents = builder->parents.size;
 	type->_private.language =
 		lang ? lang : drgn_program_language(builder->prog);
 	*ret = type;

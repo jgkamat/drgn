@@ -1825,6 +1825,12 @@ drgn_compound_type_from_dwarf(struct drgn_debug_info *dbinfo,
 					     &builder.templates);
 			if (err)
 				goto err;
+		} else if (dwarf_tag(&child) == DW_TAG_inheritance) {
+			err = parse_template(dbinfo, &child, builder.prog,
+					     "DW_TAG_inheritance",
+					     &builder.parents);
+			if (err)
+				goto err;
 		}
 		r = dwarf_siblingof(&child, &child);
 	}

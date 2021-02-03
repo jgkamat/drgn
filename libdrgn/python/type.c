@@ -308,6 +308,46 @@ static PyObject *DrgnType_get_is_variadic(DrgnType *self)
 	return PyBool_FromLong(drgn_type_is_variadic(self->type));
 }
 
+static PyObject *DrgnType_get_parents(DrgnType *self)
+{
+	PyObject *template_obj;
+	struct drgn_template_parameter *templates;
+	size_t num_templates, i;
+
+	templates = drgn_type_parents(self->type);
+	num_templates = drgn_type_num_parents(self->type);
+	template_obj = PyTuple_New(num_templates);
+	if (!template_obj)
+		return NULL;
+
+	for (i = 0; i < num_templates; i++) {
+		struct drgn_template_parameter *template = &templates[i];
+		TypeTemplateParameter *item;
+
+		item = (TypeTemplateParameter *)TypeTemplateParameter_type.tp_alloc(
+			&TypeTemplateParameter_type, 0);
+		if (!item)
+			goto err;
+		PyTuple_SET_ITEM(template_obj, i, (PyObject *)item);
+		Py_INCREF(self);
+		item->lazy_parameter.state = DRGNPY_LAZY_PARAMETER_UNEVALUATED;
+		item->lazy_parameter.lazy_parameter = &template->parameter;
+		if (template->name) {
+			item->name = PyUnicode_FromString(template->name);
+			if (!item->name)
+				goto err;
+		} else {
+			Py_INCREF(Py_None);
+			item->name = Py_None;
+		}
+	}
+	return template_obj;
+
+err:
+	Py_DECREF(template_obj);
+	return NULL;
+}
+
 static PyObject *DrgnType_get_template_parameters(DrgnType *self)
 {
 	PyObject *template_obj;
@@ -373,6 +413,7 @@ DrgnType_ATTR(enumerators);
 DrgnType_ATTR(parameters);
 DrgnType_ATTR(is_variadic);
 DrgnType_ATTR(template_parameters);
+DrgnType_ATTR(parents);
 
 static PyObject *DrgnType_getter(DrgnType *self, struct DrgnType_Attr *attr)
 {
@@ -433,6 +474,8 @@ static PyGetSetDef DrgnType_getset[] = {
 	 drgn_Type_is_variadic_DOC, &DrgnType_attr_is_variadic},
 	{"template_parameters", (getter)DrgnType_getter, NULL, drgn_Type_template_parameters_DOC,
 	 &DrgnType_attr_template_parameters},
+	{"parents", (getter)DrgnType_getter, NULL, drgn_Type_template_parameters_DOC,
+	 &DrgnType_attr_parents},
 	{},
 };
 

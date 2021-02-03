@@ -242,6 +242,7 @@ struct drgn_compound_type_builder {
 	enum drgn_type_kind kind;
 	struct drgn_type_member_vector members;
 	struct drgn_template_parameter_vector templates;
+	struct drgn_template_parameter_vector parents;
 };
 
 /**
