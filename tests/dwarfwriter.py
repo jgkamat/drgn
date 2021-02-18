@@ -35,7 +35,7 @@ def _append_sleb128(buf, value):
             buf.append(byte | 0x80)
 
 
-def _compile_debug_abbrev(cu_die):
+def _compile_debug_abbrev(cu_dies):
     buf = bytearray()
     code = 1
 
@@ -54,27 +54,25 @@ def _compile_debug_abbrev(cu_die):
             for child in die.children:
                 aux(child)
 
-    aux(cu_die)
+    for cu_die in cu_dies:
+        aux(cu_die)
     buf.append(0)
     return buf
 
 
-def _compile_debug_info(cu_die, little_endian, bits):
-    buf = bytearray()
-    byteorder = "little" if little_endian else "big"
-
-    buf.extend(b"\0\0\0\0")  # unit_length
-    buf.extend((4).to_bytes(2, byteorder))  # version
-    buf.extend((0).to_bytes(4, byteorder))  # debug_abbrev_offset
-    buf.append(bits // 8)  # address_size
-
+def _compile_debug_info(cu_dies, little_endian, bits):
     die_offsets = []
     relocations = []
     code = 1
     decl_file = 1
+    byteorder = "little" if little_endian else "big"
+    cu_buf = bytearray()
+    tu_buf = bytearray()
+    tu_id = 1
+    buf = None
 
     def aux(die, depth):
-        nonlocal code, decl_file
+        nonlocal code, decl_file, buf
         if depth == 1:
             die_offsets.append(len(buf))
         _append_uleb128(buf, code)
@@ -108,6 +106,8 @@ def _compile_debug_info(cu_die, little_endian, bits):
             elif attrib.form == DW_FORM.ref4:
                 relocations.append((len(buf), value))
                 buf.extend(b"\0\0\0\0")
+            elif attrib.form == DW_FORM.ref_sig8:
+                buf.extend((value + 1).to_bytes(8, byteorder))
             elif attrib.form == DW_FORM.sec_offset:
                 buf.extend(b"\0\0\0\0")
             elif attrib.form == DW_FORM.flag_present:
@@ -122,14 +122,32 @@ def _compile_debug_info(cu_die, little_endian, bits):
                 aux(child, depth + 1)
             buf.append(0)
 
-    aux(cu_die, 0)
+    for cu_die in cu_dies:
+        is_cu = cu_die[0] == DW_TAG.compile_unit
+        buf = cu_buf if is_cu else tu_buf
+        relocations.clear()
+        die_offsets.clear()
+        orig_len = len(buf)
+        buf.extend(b"\0\0\0\0")  # unit_length
+        buf.extend((4).to_bytes(2, byteorder))  # version
+        buf.extend((0).to_bytes(4, byteorder))  # debug_abbrev_offset
+        buf.append(bits // 8)  # address_size
 
-    unit_length = len(buf) - 4
-    buf[:4] = unit_length.to_bytes(4, byteorder)
+        if not is_cu:
+            buf.extend(tu_id.to_bytes(8, byteorder))  # signature
+            tu_id += 1
+            # get the offset as the first non header
+            relocations.append((len(buf), 0))
+            buf.extend((0).to_bytes(4, byteorder))  # type offset
 
-    for offset, index in relocations:
-        buf[offset : offset + 4] = die_offsets[index].to_bytes(4, byteorder)
-    return buf
+        aux(cu_die, 0)
+
+        unit_length = len(buf) - orig_len - 4
+        buf[orig_len : orig_len + 4] = unit_length.to_bytes(4, byteorder)
+
+        for offset, index in relocations:
+            buf[offset : offset + 4] = die_offsets[index].to_bytes(4, byteorder)
+    return cu_buf, tu_buf
 
 
 def _compile_debug_line(cu_die, little_endian):
@@ -195,39 +213,50 @@ def _compile_debug_line(cu_die, little_endian):
     return buf
 
 
+UNIT_HEADER_TYPES = frozenset({DW_TAG.type_unit, DW_TAG.compile_unit})
+
+
 def compile_dwarf(dies, little_endian=True, bits=64, *, lang=None):
     if isinstance(dies, DwarfDie):
         dies = (dies,)
+    if not dies or dies[0].tag not in UNIT_HEADER_TYPES:
+        dies = DwarfDie(DW_TAG.compile_unit, None, dies)
+    return compile_dwarf_dies(dies, little_endian, bits, lang=lang)
+
+
+def compile_dwarf_dies(dies, little_endian=True, bits=64, *, lang=None):
+    if isinstance(dies, DwarfDie):
+        dies = (dies,)
     assert all(isinstance(die, DwarfDie) for die in dies)
+    assert all(die.tag in UNIT_HEADER_TYPES for die in dies)
     cu_attribs = [
         DwarfAttrib(DW_AT.comp_dir, DW_FORM.string, "/usr/src"),
         DwarfAttrib(DW_AT.stmt_list, DW_FORM.sec_offset, 0),
     ]
     if lang is not None:
         cu_attribs.append(DwarfAttrib(DW_AT.language, DW_FORM.data1, lang))
-    cu_die = DwarfDie(DW_TAG.compile_unit, cu_attribs, dies)
 
-    return create_elf_file(
-        ET.EXEC,
-        [
-            ElfSection(p_type=PT.LOAD, vaddr=0xFFFF0000, data=b""),
-            ElfSection(
-                name=".debug_abbrev",
-                sh_type=SHT.PROGBITS,
-                data=_compile_debug_abbrev(cu_die),
-            ),
-            ElfSection(
-                name=".debug_info",
-                sh_type=SHT.PROGBITS,
-                data=_compile_debug_info(cu_die, little_endian, bits),
-            ),
-            ElfSection(
-                name=".debug_line",
-                sh_type=SHT.PROGBITS,
-                data=_compile_debug_line(cu_die, little_endian),
-            ),
-            ElfSection(name=".debug_str", sh_type=SHT.PROGBITS, data=b"\0"),
-        ],
-        little_endian=little_endian,
-        bits=bits,
-    )
+    dies = tuple(map(lambda unit: DwarfDie(unit.tag, cu_attribs, unit.children), dies))
+
+    cu_buf, tu_buf = _compile_debug_info(dies, little_endian, bits)
+
+    sections = [
+        ElfSection(p_type=PT.LOAD, vaddr=0xFFFF0000, data=b""),
+        ElfSection(
+            name=".debug_abbrev", sh_type=SHT.PROGBITS, data=_compile_debug_abbrev(dies)
+        ),
+        ElfSection(name=".debug_info", sh_type=SHT.PROGBITS, data=cu_buf),
+        ElfSection(
+            name=".debug_line",
+            sh_type=SHT.PROGBITS,
+            # TODO add support for multiple dies
+            data=_compile_debug_line(dies[0], little_endian),
+        ),
+        ElfSection(name=".debug_str", sh_type=SHT.PROGBITS, data=b"\0"),
+    ]
+    if tu_buf:
+        sections.append(
+            ElfSection(name=".debug_types", sh_type=SHT.PROGBITS, data=tu_buf)
+        )
+
+    return create_elf_file(ET.EXEC, sections, little_endian=little_endian, bits=bits)

@@ -4102,3 +4102,200 @@ class TestProgram(TestCase):
             )
         )
         self.assertIsNotNone(repr(dwarf_program(dies).type("TEST").type.parameters[0]))
+
+
+class TestTypeUnits(TestCase):
+    def test_type_unit_int(self):
+        cu_dies = test_type_dies(
+            (
+                DwarfDie(
+                    DW_TAG.base_type,
+                    (
+                        DwarfAttrib(DW_AT.name, DW_FORM.string, "int"),
+                        DwarfAttrib(DW_AT.signature, DW_FORM.ref_sig8, 0),
+                        DwarfAttrib(DW_AT.declaration, DW_FORM.flag_present, True),
+                    ),
+                ),
+                DwarfDie(
+                    DW_TAG.variable,
+                    (
+                        DwarfAttrib(DW_AT.name, DW_FORM.string, "x"),
+                        # make this a sig
+                        DwarfAttrib(DW_AT.type, DW_FORM.ref4, 0),
+                        DwarfAttrib(
+                            DW_AT.location,
+                            DW_FORM.exprloc,
+                            b"\x03\x04\x03\x02\x01\xff\xff\xff\xff",
+                        ),
+                    ),
+                ),
+            )
+        )
+        cu_dies = (DwarfDie(DW_TAG.compile_unit, None, cu_dies),)
+        tu_dies = (
+            DwarfDie(
+                DW_TAG.type_unit,
+                (DwarfAttrib(DW_AT.stmt_list, DW_FORM.sec_offset, 1),),
+                (int_die,),
+            ),
+        )
+        dies = cu_dies + tu_dies
+
+        prog = dwarf_program(dies)
+        self.assertIdentical(
+            prog["x"],
+            Object(prog, prog.int_type("int", 4, True), address=0xFFFFFFFF01020304),
+        )
+        self.assertIdentical(prog.object("x", FindObjectFlags.VARIABLE), prog["x"])
+        self.assertRaisesRegex(
+            LookupError,
+            "could not find constant",
+            prog.object,
+            "x",
+            FindObjectFlags.CONSTANT,
+        )
+
+    def test_type_unit_struct(self):
+        cu_dies = test_type_dies(
+            (
+                DwarfDie(
+                    DW_TAG.structure_type,
+                    (
+                        DwarfAttrib(DW_AT.name, DW_FORM.string, "point"),
+                        DwarfAttrib(DW_AT.signature, DW_FORM.ref_sig8, 0),
+                        DwarfAttrib(DW_AT.declaration, DW_FORM.flag_present, True),
+                    ),
+                ),
+            )
+        )
+        cu_dies = (DwarfDie(DW_TAG.compile_unit, None, cu_dies),)
+        tu_dies = (
+            DwarfDie(
+                DW_TAG.type_unit,
+                (DwarfAttrib(DW_AT.stmt_list, DW_FORM.sec_offset, 0),),
+                (
+                    DwarfDie(
+                        DW_TAG.structure_type,
+                        (
+                            DwarfAttrib(DW_AT.name, DW_FORM.string, "point"),
+                            DwarfAttrib(DW_AT.byte_size, DW_FORM.data1, 8),
+                        ),
+                        (
+                            DwarfDie(
+                                DW_TAG.member,
+                                (
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "x"),
+                                    DwarfAttrib(
+                                        DW_AT.data_member_location, DW_FORM.data1, 0
+                                    ),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ),
+                            ),
+                            DwarfDie(
+                                DW_TAG.member,
+                                (
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "y"),
+                                    DwarfAttrib(
+                                        DW_AT.data_member_location, DW_FORM.data1, 4
+                                    ),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 1),
+                                ),
+                            ),
+                        ),
+                    ),
+                    int_die,
+                ),
+            ),
+        )
+        dies = cu_dies + tu_dies
+
+        prog = dwarf_program(dies)
+        self.assertIdentical(
+            prog.type("TEST").type,
+            prog.struct_type(
+                "point",
+                8,
+                (
+                    TypeMember(prog.int_type("int", 4, True), "x", 0),
+                    TypeMember(prog.int_type("int", 4, True), "y", 32),
+                ),
+            ),
+        )
+        self.assertIdentical(
+            prog.type("TEST").type,
+            prog.type("struct point"),
+        )
+
+    def test_type_unit_specification(self):
+        cu_dies = test_type_dies(
+            (
+                DwarfDie(
+                    DW_TAG.structure_type,
+                    (
+                        DwarfAttrib(DW_AT.name, DW_FORM.string, "point"),
+                        DwarfAttrib(DW_AT.declaration, DW_FORM.flag_present, True),
+                        DwarfAttrib(DW_AT.signature, DW_FORM.ref_sig8, 0),
+                    ),
+                ),
+            )
+        )
+        cu_dies = (DwarfDie(DW_TAG.compile_unit, None, cu_dies),)
+        tu_dies = (
+            DwarfDie(
+                DW_TAG.type_unit,
+                (DwarfAttrib(DW_AT.stmt_list, DW_FORM.sec_offset, 0),),
+                (
+                    DwarfDie(
+                        DW_TAG.structure_type,
+                        (
+                            DwarfAttrib(DW_AT.name, DW_FORM.string, "point"),
+                            DwarfAttrib(DW_AT.declaration, DW_FORM.flag_present, True),
+                        ),
+                    ),
+                    DwarfDie(
+                        DW_TAG.structure_type,
+                        (
+                            DwarfAttrib(DW_AT.specification, DW_FORM.ref4, 0),
+                            DwarfAttrib(DW_AT.byte_size, DW_FORM.data1, 8),
+                        ),
+                        (
+                            DwarfDie(
+                                DW_TAG.member,
+                                (
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "x"),
+                                    DwarfAttrib(
+                                        DW_AT.data_member_location, DW_FORM.data1, 0
+                                    ),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 2),
+                                ),
+                            ),
+                            DwarfDie(
+                                DW_TAG.member,
+                                (
+                                    DwarfAttrib(DW_AT.name, DW_FORM.string, "y"),
+                                    DwarfAttrib(
+                                        DW_AT.data_member_location, DW_FORM.data1, 4
+                                    ),
+                                    DwarfAttrib(DW_AT.type, DW_FORM.ref4, 2),
+                                ),
+                            ),
+                        ),
+                    ),
+                    int_die,
+                ),
+            ),
+        )
+        dies = cu_dies + tu_dies
+
+        prog = dwarf_program(dies)
+        self.assertIdentical(
+            prog.type("TEST").type,
+            prog.struct_type(
+                "point",
+                8,
+                (
+                    TypeMember(prog.int_type("int", 4, True), "x", 0),
+                    TypeMember(prog.int_type("int", 4, True), "y", 32),
+                ),
+            ),
+        )
