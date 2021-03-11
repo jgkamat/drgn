@@ -1495,6 +1495,15 @@ drgn_debug_info_find_complete(struct drgn_debug_info *dbinfo, uint64_t tag,
 		if (err)
 			goto err;
 		index_die = drgn_dwarf_index_iterator_next(&it);
+
+		if (!index_die && (tag == DW_TAG_class_type || tag == DW_TAG_structure_type)) {
+			uint64_t class_tags[] = {DW_TAG_class_type, DW_TAG_structure_type};
+			err = drgn_dwarf_index_iterator_init(&it, ns, name, strlen(name), class_tags, 2);
+			if (err)
+				goto err;
+			index_die = drgn_dwarf_index_iterator_next(&it);
+		}
+
 		if (!index_die)
 			err = &drgn_stop;
 	err:
