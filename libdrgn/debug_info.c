@@ -812,15 +812,21 @@ drgn_get_debug_sections(struct drgn_debug_info_module *module)
 			continue;
 
 		Elf_Data **sectionp;
-		if (!module->debug_info && strcmp(scnname, ".debug_info") == 0)
+		printf("%s\n", scnname);
+		if (!module->debug_info && (strcmp(scnname, ".debug_info") == 0
+					    || strcmp(scnname, ".debug_info.dwo") == 0))
 			sectionp = &module->debug_info;
-		else if (!module->debug_abbrev && strcmp(scnname, ".debug_abbrev") == 0)
+		else if (!module->debug_abbrev && (strcmp(scnname, ".debug_abbrev") == 0
+						   || strcmp(scnname, ".debug_abbrev.dwo") == 0))
 			sectionp = &module->debug_abbrev;
-		else if (!module->debug_str && strcmp(scnname, ".debug_str") == 0)
+		else if (!module->debug_str && (strcmp(scnname, ".debug_str") == 0
+						|| strcmp(scnname, ".debug_str.dwo") == 0))
 			sectionp = &module->debug_str;
-		else if (!module->debug_line && strcmp(scnname, ".debug_line") == 0)
+		else if (!module->debug_line && (strcmp(scnname, ".debug_line") == 0
+						 || strcmp(scnname, ".debug_line.dwo") == 0))
 			sectionp = &module->debug_line;
-		else if (!module->debug_types && strcmp(scnname, ".debug_types") == 0) {
+		else if (!module->debug_types && (strcmp(scnname, ".debug_types") == 0
+						  || strcmp(scnname, ".debug_types.dwo") == 0)) {
 			sectionp = &module->debug_types;
 		}
 		else
