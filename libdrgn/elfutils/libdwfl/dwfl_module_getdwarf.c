@@ -1331,12 +1331,12 @@ load_dw (Dwfl_Module *mod, struct dwfl_file *debugfile)
       if (error != DWFL_E_NOERROR)
 	return error;
 
-      find_symtab (mod);
-      Dwfl_Error result = mod->symerr;
-      if (result == DWFL_E_NOERROR)
-	result = __libdwfl_relocate (mod, debugfile->elf, true);
-      if (result != DWFL_E_NOERROR)
-	return result;
+      // find_symtab (mod);
+      // Dwfl_Error result = mod->symerr;
+      // if (result == DWFL_E_NOERROR)
+      // 	result = __libdwfl_relocate (mod, debugfile->elf, true);
+      // if (result != DWFL_E_NOERROR)
+      // 	return result;
     }
 
   mod->dw = INTUSE(dwarf_begin_elf) (debugfile->elf, DWARF_C_READ, NULL);
